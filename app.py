@@ -96,10 +96,12 @@ if token:
               "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'}
     res = requests.get(res_url, headers=headers, params=params)
     source_data = res.json().get("results", []) if res.status_code == 200 else []
-    data_type = "LIVE API"
+    status_msg = f"LIVE API Mode | Style: {conf['type']}"
+    status_color = "#00FF00" # Green for Live
 else:
     source_data = get_mimic_reservations()
-    data_type = f"MIMIC ({owner_pct:.0f}%)"
+    status_msg = f"Source: MIMIC ({owner_pct:.0f}%) Mode | Style: {conf['type']}"
+    status_color = "#FFD700" # Yellow for Mimic
 
 for r in source_data:
     if token:
@@ -126,7 +128,16 @@ df = pd.DataFrame(rows)
 
 # --- 5. RENDER ---
 st.header(f"Reservation Report: {active_owner}")
-st.caption(f"Source: {data_type} Mode | Style: {conf['type']}")
+
+# BIG BOLD YELLOW STATUS
+st.markdown(f"""
+    <div style="background-color: rgba(255, 215, 0, 0.1); padding: 10px; border-radius: 5px; border-left: 5px solid {status_color};">
+        <span style="color: {status_color}; font-size: 20px; font-weight: bold;">
+            {status_msg}
+        </span>
+    </div>
+    <br>
+    """, unsafe_allow_html=True)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
@@ -143,6 +154,3 @@ config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net P
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
-
-if not token:
-    st.info(f"💡 Mimic data shown for {active_owner}. Enter API Secret in the sidebar expander to switch to Live Mode.")
