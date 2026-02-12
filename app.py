@@ -1,104 +1,90 @@
 import streamlit as st
+import requests
 import pandas as pd
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import io
+from datetime import datetime
 
-# --- 1. SETTINGS & STYLING ---
-st.set_page_config(page_title="Guesty Owner Statements", layout="wide")
-st.title("📊 Guesty Owner Statement Generator")
+# --- 1. GUESTY API CONNECTION ---
+def get_guesty_token():
+    url = "https://open-api.guesty.com/oauth2/token"
+    payload = {
+        "grant_type": "client_credentials",
+        "scope": "all",
+        "client_id": st.secrets["CLIENT_ID"],
+        "client_secret": st.secrets["CLIENT_SECRET"]
+    }
+    response = requests.post(url, data=payload)
+    return response.json().get("access_token")
 
-# --- 2. THE BUSINESS RULES ---
-def calculate_statement(owner, accommodation, cleaning, expenses, is_website_booking):
-    # Eran's Special Rules
-    if "ERAN" in owner.upper():
-        rate = 0.12
-        web_fee = (accommodation * 0.01) if is_website_booking else 0
-        pmc = accommodation * rate
-        total_deductions = pmc + cleaning + expenses + web_fee
-        # Eran's logic: He gets the payout, we draft the fees
-        net_owner = (accommodation + cleaning) - total_deductions 
-        return {
-            "rate_label": "12%",
-            "pmc": pmc,
-            "web_fee": web_fee,
-            "deductions": total_deductions,
-            "net": net_owner,
-            "type": "DRAFT FROM OWNER"
-        }
-    # Standard Rules (Yen, etc.)
-    else:
-        rate = 0.15
-        pmc = accommodation * rate
-        total_deductions = pmc + cleaning + expenses
-        # Others: We send them what's left
-        net_owner = accommodation - total_deductions
-        return {
-            "rate_label": "15%",
-            "pmc": pmc,
-            "web_fee": 0,
-            "deductions": total_deductions,
-            "net": net_owner,
-            "type": "PAYOUT TO OWNER"
-        }
+def fetch_guesty_data(month, year):
+    token = get_guesty_token()
+    headers = {"Authorization": f"Bearer {token}", "accept": "application/json"}
+    
+    # Filtering for the specific month
+    start_date = f"{year}-{month:02d}-01"
+    # Simplified query for reservations in that range
+    url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters=[{{'field':'checkInDate','operator':'$gte','value':'{start_date}'}}]"
+    
+    res = requests.get(url, headers=headers)
+    return res.json().get("results", [])
 
-# --- 3. THE WEBSITE INTERFACE ---
-st.subheader("Manual Data Entry (Testing Mode)")
-col1, col2 = st.columns(2)
+# --- 2. THE LOGIC ENGINE ---
+def process_report(reservations, owner_name):
+    report_data = []
+    
+    for r in reservations:
+        # Check if this reservation belongs to the selected owner (simplified)
+        # In real use, we'd filter by Listing ID or Tag
+        acc = r.get('money', {}).get('fare', 0)
+        cleaning = r.get('money', {}).get('cleaningFee', 0)
+        payout = r.get('money', {}).get('netPayout', 0)
+        source = r.get('source', '').lower()
+        prop_name = r.get('listing', {}).get('title', 'Unknown Property')
 
+        # 1% Website Fee Rule for Eran
+        web_fee = (acc * 0.01) if ("ERAN" in owner_name.upper() and "website" in source) else 0
+        
+        report_data.append({
+            "Property": prop_name,
+            "Accommodation": acc,
+            "Cleaning": cleaning,
+            "Payout": payout,
+            "WebFee": web_fee
+        })
+    
+    df = pd.DataFrame(report_data)
+    # Grouping by Property (Property Summary)
+    summary = df.groupby("Property").sum().reset_index()
+    return summary
+
+# --- 3. THE WEBSITE UI ---
+st.title("🏡 Automatic Owner Statements")
+
+col1, col2, col3 = st.columns(3)
 with col1:
     owner = st.selectbox("Select Owner", ["ERAN MARON", "YEN FRENCH"])
-    acc_amt = st.number_input("Accommodation Amount ($)", value=1005.00)
-    clean_amt = st.number_input("Cleaning Fee ($)", value=500.00)
-
 with col2:
-    exp_amt = st.number_input("Expenses ($)", value=55.00)
-    is_web = st.checkbox("Is this a Website Booking? (Adds 1% for Eran)")
-    inv_link = st.text_input("Expense Invoice Link", "https://guesty.com/your-invoice-link")
+    report_month = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
+with col3:
+    report_year = st.number_input("Year", value=2026)
 
-# Calculate Results
-results = calculate_statement(owner, acc_amt, clean_amt, exp_amt, is_web)
-
-# --- 4. DISPLAY THE SUMMARY ---
-st.write("---")
-st.header(f"Summary for {owner}")
-c_acc, c_pmc, c_web, c_net = st.columns(4)
-
-c_acc.metric("Total Accommodation", f"${acc_amt:,.2f}")
-c_pmc.metric(f"PMC ({results['rate_label']})", f"-${results['pmc']:,.2f}")
-if owner == "ERAN MARON":
-    c_web.metric("Website Fee (1%)", f"-${results['web_fee']:,.2f}")
-c_net.metric("NET OWNER REVENUE", f"${results['net']:,.2f}")
-
-st.warning(f"Note: This is a **{results['type']}** model.")
-
-# --- 5. PDF GENERATOR ---
-def create_pdf():
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(50, 750, f"Owner Statement: {owner}")
-    
-    p.setFont("Helvetica", 12)
-    p.drawString(50, 720, f"Accommodation: ${acc_amt:,.2f}")
-    p.drawString(50, 700, f"Cleaning Fee: ${clean_amt:,.2f}")
-    p.drawString(50, 680, f"Expenses: ${exp_amt:,.2f}")
-    p.drawString(50, 660, f"Total Deductions: -${results['deductions']:,.2f}")
-    
-    p.line(50, 640, 550, 640)
-    p.drawString(50, 620, f"NET OWNER REVENUE: ${results['net']:,.2f}")
-    
-    p.setFont("Helvetica-Oblique", 10)
-    p.drawString(50, 580, f"Expense Invoice Link: {inv_link}")
-    
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    return buffer
-
-st.download_button(
-    label="Download PDF Statement",
-    data=create_pdf(),
-    file_name=f"Statement_{owner}.pdf",
-    mime="application/pdf"
-)
+if st.button("Pull Data from Guesty"):
+    with st.spinner("Fetching data..."):
+        raw_data = fetch_guesty_data(report_month, report_year)
+        if not raw_data:
+            st.error("No reservations found for this period.")
+        else:
+            summary_df = process_report(raw_data, owner)
+            
+            st.subheader(f"Property Summary Report - {owner}")
+            st.table(summary_df)
+            
+            # Totals for the Summary Page
+            total_acc = summary_df['Accommodation'].sum()
+            total_web = summary_df['WebFee'].sum()
+            
+            st.metric("Combined Accommodation", f"${total_acc:,.2f}")
+            if owner == "ERAN MARON":
+                st.metric("Total Website Fees (1%)", f"-${total_web:,.2f}")
