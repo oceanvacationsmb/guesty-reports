@@ -2,19 +2,18 @@ import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
 
-# --- 1. SETUP & CUSTOM CSS FOR PRINTING ---
+# --- 1. SETUP ---
 st.set_page_config(page_title="PMC MASTER SUITE", layout="wide")
 
-# This CSS hides the sidebar and top decorations during printing
+# Custom CSS to ensure the PDF looks professional and removes web-specific margins
 st.markdown("""
     <style>
     @media print {
-        header, [data-testid="stSidebar"], [data-testid="stToolbar"], .stButton {
+        [data-testid="stSidebar"], .stButton, header, footer {
             display: none !important;
         }
         .main .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
+            padding: 0 !important;
         }
     }
     </style>
@@ -55,109 +54,72 @@ with st.sidebar:
         sel_year = c2.selectbox("YEAR", [2026, 2025], index=0)
         start_date = date(sel_year, months.index(sel_month)+1, 1)
         end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    elif report_type == "BETWEEN DATES":
-        c1, c2 = st.columns(2)
-        start_date = c1.date_input("START DATE", today - timedelta(days=30))
-        end_date = c2.date_input("END DATE", today)
     else:
         start_date, end_date = date(today.year, 1, 1), today
 
     st.divider()
-    with st.expander("👤 OWNER MANAGEMENT", expanded=False):
+    with st.expander("👤 OWNER MANAGEMENT"):
         target = st.selectbox("EDIT/DELETE", ["+ ADD NEW"] + list(st.session_state.owner_db.keys()))
         curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "DRAFT"})
         n_name = st.text_input("NAME", value="" if target == "+ ADD NEW" else target).upper().strip()
         n_pct = st.number_input("COMM %", 0.0, 100.0, float(curr["pct"]))
-        n_style = st.selectbox("STYLE", ["DRAFT", "PAYOUT"], index=0 if curr["type"] == "DRAFT" else 1)
         if st.button("💾 SAVE SETTINGS"):
-            st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_style}
+            st.session_state.owner_db[n_name] = {"pct": n_pct, "type": "DRAFT"}
             st.rerun()
 
     with st.expander("🔌 API CONNECTION", expanded=True):
         st.text_input("CLIENT ID", value="0oaszuo22iOg...", type="password")
-        st.text_input("CLIENT SECRET (KEY)", value="", type="password") 
-        if st.button("🔄 SAVE & RUN", type="primary", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
+        st.text_input("CLIENT SECRET (KEY)", type="password") 
+        st.button("🔄 SAVE & RUN", type="primary", use_container_width=True)
 
 # --- 3. CALCULATION ENGINE ---
-all_owners_data = []
-total_ov2 = 0
-for name, settings in st.session_state.owner_db.items():
-    owner_data = get_mimic_data(name)
-    o_comm, o_cln, o_exp, o_fare = 0, 0, 0, 0
-    for r in owner_data:
-        f, c, e = r['Fare'], r['Cln'], r['Exp']
-        o_comm += round(f * (settings['pct'] / 100), 2)
-        o_cln += c; o_exp += e; o_fare += f
-    
-    is_draft = settings['type'] == "DRAFT"
-    if is_draft:
-        top_rev = o_fare + o_cln
-        net_rev = top_rev - o_cln - o_comm - o_exp
-        draft_amt = o_comm + o_cln + o_exp
-        ach_amt = 0
-    else:
-        top_rev = o_fare
-        net_rev = o_fare - o_comm - o_exp
-        draft_amt = 0
-        ach_amt = net_rev
-    
-    all_owners_data.append({
-        "OWNER": name, "TYPE": settings['type'], "REVENUE": top_rev, "PCT": settings['pct'],
-        "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, "NET": net_rev, "DRAFT": draft_amt, "ACH": ach_amt
-    })
-    total_ov2 += o_comm
+owner_data = get_mimic_data(active_owner)
+o_comm = sum(round(r['Fare'] * (conf['pct'] / 100), 2) for r in owner_data)
+o_cln = sum(r['Cln'] for r in owner_data)
+o_exp = sum(r['Exp'] for r in owner_data)
+o_fare = sum(r['Fare'] for r in owner_data)
 
 # --- 4. MAIN CONTENT ---
 if mode == "STATEMENTS":
-    # PDF PRINT BUTTON (Hidden in the PDF itself via CSS)
-    col_title, col_print = st.columns([4, 1])
-    with col_print:
-        st.button("🖨️ PREPARE PDF", on_click=lambda: st.write('<script>window.print();</script>', unsafe_allow_html=True))
+    # EXPORT ACTION
+    c_title, c_export = st.columns([4, 1])
+    with c_export:
+        if st.button("📄 EXPORT PDF"):
+            st.info("💡 Press Ctrl+P (or Cmd+P) and select 'Save as PDF' to export the clean view below.")
 
     st.markdown(f"<div style='text-align: center;'><h1>OWNER STATEMENT</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} TO {end_date}</p></div>", unsafe_allow_html=True)
     
-    s = next(item for item in all_owners_data if item["OWNER"] == active_owner)
-    
+    # Summary Metrics
     if conf['type'] == "DRAFT":
-        m1, m2, m3, m4, m5, m6 = st.columns(6)
-        m1.metric("GROSS PAYOUT", f"${s['REVENUE']:,.2f}")
-        m2.metric("TOTAL CLEANING", f"${s['CLN']:,.2f}")
-        m3.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
-        m4.metric("EXPENSED", f"${s['EXP']:,.2f}")
-        m5.metric("NET REVENUE", f"${s['NET']:,.2f}")
-        m6.metric("🏦 DRAFT FROM OWNER", f"${s['DRAFT']:,.2f}")
+        m = st.columns(5)
+        m[0].metric("GROSS PAYOUT", f"${(o_fare + o_cln):,.2f}")
+        m[1].metric("CLEANING", f"${o_cln:,.2f}")
+        m[2].metric("PMC COMM", f"${o_comm:,.2f}")
+        m[3].metric("EXPENSED", f"${o_exp:,.2f}")
+        m[4].metric("🏦 DRAFT AMT", f"${(o_comm + o_cln + o_exp):,.2f}")
     else:
-        m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("ACCOMMODATION", f"${s['REVENUE']:,.2f}")
-        m2.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
-        m3.metric("EXPENSED", f"${s['EXP']:,.2f}")
-        m4.metric("NET REVENUE", f"${s['NET']:,.2f}")
-        m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}")
+        m = st.columns(4)
+        m[0].metric("ACCOMMODATION", f"${o_fare:,.2f}")
+        m[1].metric("PMC COMM", f"${o_comm:,.2f}")
+        m[2].metric("EXPENSED", f"${o_exp:,.2f}")
+        m[3].metric("💸 ACH TO OWNER", f"${(o_fare - o_comm - o_exp):,.2f}")
 
     st.divider()
 
-    df_p = pd.DataFrame(get_mimic_data(active_owner))
+    # Property Details
+    df_p = pd.DataFrame(owner_data)
     for addr in df_p["Addr"].unique():
         sub = df_p[df_p["Addr"] == addr]
-        st.markdown(f"#### 🏠 {sub['Prop'].iloc[0]} \n *{addr}*")
-        rows = []
-        for _, r in sub.iterrows():
-            f, c, e = r['Fare'], r['Cln'], r['Exp']
-            cm = round(f * (conf['pct'] / 100), 2)
-            if conf['type'] == "DRAFT":
-                gp = f + c
-                nr = gp - c - cm - e
-                row = {"ID": r['ID'], "STAY": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", "GROSS PAYOUT": gp, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "NET REVENUE": nr}
-            else:
-                nr = f - cm - e
-                row = {"ID": r['ID'], "STAY": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", "ACCOMMODATION": f, "PMC COMM": cm, "EXPENSED": e, "NET REVENUE": nr}
-            rows.append(row)
+        st.markdown(f"### 🏠 {sub['Prop'].iloc[0]} \n *{addr}*")
         
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-elif mode == "PMC REPORT":
-    st.title("PMC INTERNAL CONTROL REPORT")
-    st.metric("TRANSFER TO OV2", f"${total_ov2:,.2f}")
-    st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True)
+        # Build Table rows
+        table_rows = []
+        for _, r in sub.iterrows():
+            cm = round(r['Fare'] * (conf['pct'] / 100), 2)
+            if conf['type'] == "DRAFT":
+                row = {"STAY": f"{r['In']} - {r['Out']}", "GROSS": r['Fare']+r['Cln'], "CLN": r['Cln'], "PMC": cm, "EXP": r['Exp'], "NET": (r['Fare']+r['Cln']) - r['Cln'] - cm - r['Exp']}
+            else:
+                row = {"STAY": f"{r['In']} - {r['Out']}", "ACC": r['Fare'], "PMC": cm, "EXP": r['Exp'], "NET": r['Fare'] - cm - r['Exp']}
+            table_rows.append(row)
+        
+        st.table(pd.DataFrame(table_rows)) # Using st.table for better PDF rendering than st.dataframe
