@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from datetime import datetime, date
 
-# --- 1. DATABASE & API LOGIC ---
+# --- 1. DATABASE & API CACHE ---
 if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {
         "ERAN": {"pct": 20.0, "type": "Draft"},
@@ -37,13 +37,13 @@ with st.sidebar:
     today = date.today()
     
     if report_type == "By Month":
-        # Added Year Picker alongside Month Picker
         sel_year = st.selectbox("Select Year", [2026, 2025, 2024], index=0)
         month_names = ["January", "February", "March", "April", "May", "June", 
                        "July", "August", "September", "October", "November", "December"]
         sel_month = st.selectbox("Select Month", month_names, index=today.month-1)
         month_num = month_names.index(sel_month) + 1
         start_date = date(sel_year, month_num, 1)
+        # End date logic for the chosen month
         if month_num == 12: end_date = date(sel_year, 12, 31)
         else: end_date = date(sel_year, month_num + 1, 1)
         
@@ -88,13 +88,15 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
 
-# --- 3. CALCULATIONS & LIVE FETCH ---
+# --- 3. DATA PROCESSING ---
 token = get_guesty_token(c_id, c_secret)
+conf = st.session_state.owner_db[active_owner]
+rows = []
+t_fare = t_comm = t_exp = t_cln = 0
 
 if token:
     res_url = "https://open-api.guesty.com/v1/reservations"
     headers = {"Authorization": f"Bearer {token}"}
-    # Live filtering to only pull what's needed
     params = {
         "limit": 100, 
         "fields": "confirmationCode money checkIn",
@@ -103,10 +105,6 @@ if token:
     
     res = requests.get(res_url, headers=headers, params=params)
     raw_api_data = res.json().get("results", []) if res.status_code == 200 else []
-    
-    conf = st.session_state.owner_db[active_owner]
-    rows = []
-    t_fare = t_comm = t_exp = t_cln = 0
 
     for r in raw_api_data:
         money = r.get("money", {})
@@ -133,22 +131,29 @@ if token:
             row["Net Payout"] = fare - comm
         rows.append(row)
 
-    df = pd.DataFrame(rows)
+df = pd.DataFrame(rows)
 
-    # --- 4. RENDER (YOUR METRICS & TABLE) ---
-    st.header(f"Settlement Report: {active_owner} ({conf['pct']}%)")
-    st.caption(f"Showing reservations from {start_date} to {end_date}")
+# --- 4. RENDER SUMMARY (ALWAYS VISIBLE) ---
+st.header(f"Settlement Report: {active_owner} ({conf['pct']}%)")
+st.caption(f"Period: {start_date} to {end_date}")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Gross Revenue", f"${t_fare:,.2f}")
-    c2.metric(f"Commission", f"${t_comm:,.2f}")
-    c3.metric("Total Expenses", f"$0.00")
-    with c4:
-        total_val = (t_fare + t_cln) if conf['type'] == "Draft" else (t_fare - t_comm)
-        st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Gross Revenue", f"${t_fare:,.2f}")
+c2.metric(f"Commission", f"${t_comm:,.2f}")
+c3.metric("Total Expenses", f"$0.00")
+with c4:
+    # Always calculates based on current total values
+    total_val = (t_fare + t_cln) if conf['type'] == "Draft" else (t_fare - t_comm)
+    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
 
-    st.divider()
+st.divider()
 
+# --- 5. RENDER TABLE ---
+if not token:
+    st.info("👋 Enter your Client Secret in the sidebar 'Connection Settings' to see detailed reservation data.")
+elif df.empty:
+    st.warning("No data found for this period.")
+else:
     order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
     config = {
         "Net Payout": st.column_config.NumberColumn(format="$%,.2f"),
@@ -158,11 +163,5 @@ if token:
         "Expenses": st.column_config.NumberColumn(format="$%,.2f"),
         "Invoice": st.column_config.LinkColumn(display_text="🔗 View")
     }
-
-    if not df.empty:
-        st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
-        st.download_button("📥 Download Statement", df.to_csv(index=False), file_name=f"{active_owner}_Report.csv", use_container_width=True)
-    else:
-        st.warning("No data found for this period.")
-else:
-    st.info("👋 Setup your connection in the sidebar to load live data.")
+    st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
+    st.download_button("📥 Download Statement", df.to_csv(index=False), file_name=f"{active_owner}_Report.csv", use_container_width=True)
