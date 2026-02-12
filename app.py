@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 # --- 1. DATABASE & API CACHE ---
 if 'owner_db' not in st.session_state:
@@ -21,12 +21,12 @@ def get_guesty_token(cid, csec):
         return res.json().get("access_token") if res.status_code == 200 else None
     except: return None
 
-# --- 2. MIMIC RESERVATIONS ---
+# --- 2. MIMIC RESERVATIONS (With Check-in/Out) ---
 def get_mimic_reservations():
     return [
-        {"ID": "RES-55421", "Date": date(2026, 2, 1), "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0},
-        {"ID": "RES-55429", "Date": date(2026, 2, 10), "Fare": 850.50, "Clean": 100.0, "Exp": 0.0},
-        {"ID": "RES-55435", "Date": date(2026, 2, 18), "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10}
+        {"ID": "RES-55421", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0},
+        {"ID": "RES-55429", "In": date(2026, 2, 10), "Out": date(2026, 2, 14), "Fare": 850.50, "Clean": 100.0, "Exp": 0.0},
+        {"ID": "RES-55435", "In": date(2026, 2, 18), "Out": date(2026, 2, 22), "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10}
     ]
 
 # --- 3. DASHBOARD UI ---
@@ -91,7 +91,8 @@ t_fare = t_comm = t_exp = t_cln = 0
 if token:
     res_url = "https://open-api.guesty.com/v1/reservations"
     headers = {"Authorization": f"Bearer {token}"}
-    params = {"limit": 50, "fields": "confirmationCode money checkIn", 
+    # Added checkOut to fields
+    params = {"limit": 50, "fields": "confirmationCode money checkIn checkOut", 
               "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'}
     res = requests.get(res_url, headers=headers, params=params)
     source_data = res.json().get("results", []) if res.status_code == 200 else []
@@ -104,15 +105,18 @@ for r in source_data:
     if token:
         money = r.get("money", {})
         fare, clean, exp = float(money.get("fare", 0)), float(money.get("cleaningFee", 0)), 0.0
-        res_id, res_date = r.get("confirmationCode"), r.get("checkIn")[:10]
+        res_id = r.get("confirmationCode")
+        # Format: Feb 01 - Feb 05
+        date_display = f"{r.get('checkIn')[5:10]} / {r.get('checkOut')[5:10]}"
     else:
         fare, clean, exp = r['Fare'], r['Clean'], r['Exp']
-        res_id, res_date = r['ID'], r['Date'].strftime("%Y-%m-%d")
+        res_id = r['ID']
+        date_display = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
 
     comm = round(fare * (conf['pct'] / 100), 2)
     t_fare, t_comm, t_cln, t_exp = t_fare + fare, t_comm + comm, t_cln + clean, t_exp + exp
 
-    row = {"ID": res_id, "Date": res_date, "Accommodation": fare, "Commission": comm, "Expenses": exp, "Invoice": f"https://app.guesty.com/reservations/{res_id}"}
+    row = {"ID": res_id, "Check-in/Out": date_display, "Accommodation": fare, "Commission": comm, "Expenses": exp, "Invoice": f"https://app.guesty.com/reservations/{res_id}"}
     if conf['type'] == "Draft":
         row["Net Payout"], row["Cleaning"] = (fare + clean - exp), clean
     else:
@@ -135,7 +139,7 @@ with c4:
 
 st.divider()
 
-order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"] if conf['type'] == "Draft" else ["ID", "Date", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"]
+order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"] if conf['type'] == "Draft" else ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"]
 config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
