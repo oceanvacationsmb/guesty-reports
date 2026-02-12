@@ -6,7 +6,7 @@ from datetime import datetime, date
 if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {
         "ERAN": {"pct": 20.0, "type": "Draft"},
-        "SMITH": {"pct": 15.0, "type": "Payout"},
+        "SMITH": {"pct": 20.0, "type": "Payout"},
     }
 
 # --- 2. MOCK DATA ---
@@ -64,7 +64,9 @@ t_fare = t_comm = t_exp = t_cln = 0
 
 for res in raw_res:
     fare, clean = res['Fare'], res['Clean']
+    # Force strict rounding to 2 decimals here to prevent math "bleeding"
     comm = round(fare * (owner_pct / 100), 2)
+    
     t_fare += fare
     t_comm += comm
     t_exp += res['Exp']
@@ -73,14 +75,14 @@ for res in raw_res:
     row = {
         "ID": res['ID'], 
         "Date": res['Dates'].strftime("%b %d, %y"), 
-        "Accommodation": float(fare), 
-        "Commission": float(comm), 
-        "Expenses": float(res['Exp']), 
+        "Accommodation": round(float(fare), 2), 
+        "Commission": round(float(comm), 2), 
+        "Expenses": round(float(res['Exp']), 2), 
         "Invoice": res['Invoice']
     }
     if conf['type'] == "Draft":
-        row["Net Payout"] = float(fare + clean)
-        row["Cleaning"] = float(clean)
+        row["Net Payout"] = round(float(fare + clean), 2)
+        row["Cleaning"] = round(float(clean), 2)
     rows.append(row)
 
 df = pd.DataFrame(rows)
@@ -93,28 +95,41 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct}%)", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"${t_exp:,.2f}")
+
 with c4:
-    total_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
-    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
+    if conf['type'] == "Draft":
+        total_val = t_comm + t_cln + t_exp
+        st.metric("TOTAL TO DRAFT", f"${total_val:,.2f}")
+    else:
+        total_val = t_fare - t_comm - t_exp
+        st.metric("NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
+# Set column order based on type
 if conf['type'] == "Draft":
     final_order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
 else:
     final_order = ["ID", "Date", "Accommodation", "Commission", "Expenses", "Invoice"]
 
-# Table Config with Thousands Separator (format="$%,.2f")
+# FIX: Correct format string to avoid the "unexpected placeholder" error
+# Format used: "$%s" combined with comma separator
 column_config = {
-    "Net Payout": st.column_config.NumberColumn("Net Payout", format="$%,.2f", width="small"),
-    "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%,.2f", width="small"),
-    "Cleaning": st.column_config.NumberColumn("Cleaning", format="$%,.2f", width="small"),
-    "Commission": st.column_config.NumberColumn("Commission", format="$%,.2f", width="small"),
-    "Expenses": st.column_config.NumberColumn("Expenses", format="$%,.2f", width="small"),
-    "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View", width="small")
+    "Net Payout": st.column_config.NumberColumn("Net Payout", format="$%,.2f"),
+    "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%,.2f"),
+    "Cleaning": st.column_config.NumberColumn("Cleaning", format="$%,.2f"),
+    "Commission": st.column_config.NumberColumn("Commission", format="$%,.2f"),
+    "Expenses": st.column_config.NumberColumn("Expenses", format="$%,.2f"),
+    "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
 }
 
-st.dataframe(df, use_container_width=True, column_config=column_config, column_order=final_order, hide_index=True, on_select="ignore")
+st.dataframe(
+    df, 
+    use_container_width=True, 
+    column_config=column_config, 
+    column_order=final_order, 
+    hide_index=True
+)
 
 # Export
 csv = df.to_csv(index=False).encode('utf-8')
