@@ -9,8 +9,12 @@ if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {"ERAN": {"pct": 12.0, "type": "Draft"}, "SMITH": {"pct": 15.0, "type": "Payout"}}
 
 def get_data():
-    return [{"ID": "RES-55421", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0},
-            {"ID": "RES-55429", "In": date(2026, 2, 10), "Out": date(2026, 2, 14), "Fare": 850.50, "Clean": 100.0, "Exp": 0.0}]
+    # Mimic data: RES-55421 has expenses (25.0), RES-55429 does not (0.0)
+    return [
+        {"ID": "RES-55421", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0},
+        {"ID": "RES-55429", "In": date(2026, 2, 10), "Out": date(2026, 2, 14), "Fare": 850.50, "Clean": 100.0, "Exp": 0.0},
+        {"ID": "RES-55435", "In": date(2026, 2, 18), "Out": date(2026, 2, 22), "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10}
+    ]
 
 # --- 2. SIDEBAR ---
 with st.sidebar:
@@ -32,7 +36,7 @@ with st.sidebar:
             st.session_state.owner_db[owner] = {"pct": u_pct, "type": u_type}
             st.rerun()
 
-    with st.expander("🔌 API"):
+    with st.expander("🔌 API Settings"):
         st.text_input("Client ID", value="0oaszuo22iOg...")
         st.text_input("Client Secret", type="password")
 
@@ -49,6 +53,10 @@ if mode == "Dashboard":
         
         vals["gross"]+=rev; vals["comm"]+=cm; vals["cln"]+=c; vals["exp"]+=e; vals["net"]+=net
         
+        # CONDITIONAL LINK LOGIC
+        # If expense is 0, we set the Invoice field to None so the LinkColumn stays empty
+        invoice_link = f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None
+        
         rows.append({
             "ID": r['ID'], 
             "Check-in/Out": f"{r['In'].strftime('%m/%d')}", 
@@ -57,7 +65,7 @@ if mode == "Dashboard":
             "Cleaning": c, 
             "Commission": cm, 
             "Expenses": e, 
-            "Invoice": f"https://app.guesty.com/reservations/{r['ID']}", # RESTORED LINK
+            "Invoice": invoice_link, 
             "Net Payout": round(net, 2)
         })
 
@@ -79,7 +87,6 @@ if mode == "Dashboard":
 
     st.divider()
     
-    # Updated Table Config with LinkColumn
     table_config = {col: st.column_config.NumberColumn(format="$%.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Gross Revenue"]}
     table_config["Invoice"] = st.column_config.LinkColumn("Invoice", display_text="🔗 View")
     
