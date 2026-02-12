@@ -2,8 +2,23 @@ import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
 
-# --- 1. SETUP ---
+# --- 1. SETUP & CUSTOM CSS FOR PRINTING ---
 st.set_page_config(page_title="PMC MASTER SUITE", layout="wide")
+
+# This CSS hides the sidebar and top decorations during printing
+st.markdown("""
+    <style>
+    @media print {
+        header, [data-testid="stSidebar"], [data-testid="stToolbar"], .stButton {
+            display: none !important;
+        }
+        .main .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+        }
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {
@@ -33,7 +48,6 @@ with st.sidebar:
     report_type = st.selectbox("CONTEXT", ["BY MONTH", "FULL YEAR", "YTD", "BETWEEN DATES"], index=0)
     
     today = date.today()
-    # Date logic for start_date and end_date
     if report_type == "BY MONTH":
         c1, c2 = st.columns(2)
         months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
@@ -59,7 +73,6 @@ with st.sidebar:
             st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_style}
             st.rerun()
 
-    # UPDATED: Added CLIENT SECRET (Key) field to match your requirement
     with st.expander("🔌 API CONNECTION", expanded=True):
         st.text_input("CLIENT ID", value="0oaszuo22iOg...", type="password")
         st.text_input("CLIENT SECRET (KEY)", value="", type="password") 
@@ -96,8 +109,13 @@ for name, settings in st.session_state.owner_db.items():
     })
     total_ov2 += o_comm
 
-# --- 4. MAIN CONTENT (STATEMENTS) ---
+# --- 4. MAIN CONTENT ---
 if mode == "STATEMENTS":
+    # PDF PRINT BUTTON (Hidden in the PDF itself via CSS)
+    col_title, col_print = st.columns([4, 1])
+    with col_print:
+        st.button("🖨️ PREPARE PDF", on_click=lambda: st.write('<script>window.print();</script>', unsafe_allow_html=True))
+
     st.markdown(f"<div style='text-align: center;'><h1>OWNER STATEMENT</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} TO {end_date}</p></div>", unsafe_allow_html=True)
     
     s = next(item for item in all_owners_data if item["OWNER"] == active_owner)
@@ -137,14 +155,7 @@ if mode == "STATEMENTS":
                 row = {"ID": r['ID'], "STAY": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", "ACCOMMODATION": f, "PMC COMM": cm, "EXPENSED": e, "NET REVENUE": nr}
             rows.append(row)
         
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={
-            "GROSS PAYOUT": st.column_config.NumberColumn(format="$%.2f"),
-            "ACCOMMODATION": st.column_config.NumberColumn(format="$%.2f"),
-            "CLEANING": st.column_config.NumberColumn(format="$%.2f"),
-            "PMC COMM": st.column_config.NumberColumn(format="$%.2f"),
-            "EXPENSED": st.column_config.NumberColumn(format="$%.2f"),
-            "NET REVENUE": st.column_config.NumberColumn(format="$%.2f")
-        })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 elif mode == "PMC REPORT":
     st.title("PMC INTERNAL CONTROL REPORT")
