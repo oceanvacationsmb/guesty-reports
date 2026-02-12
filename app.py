@@ -74,15 +74,13 @@ with st.sidebar:
             st.rerun()
 
 # --- 4. CALCULATIONS ---
-# Note: Inputs handled in sidebar sections
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
 rows = []
 t_fare = t_comm = t_exp = t_cln = 0
 
-# (Token logic assumed here from previous turns)
 source_data = get_mimic_reservations()
-status_msg = f"Source: MIMIC ({owner_pct:.0f}%) Mode | Style: {conf['type']}"
+status_msg = f"Mode: {conf['type']} | Commission: {owner_pct}%"
 
 # --- 5. CENTERED YELLOW HEADERS ---
 st.markdown(f"""
@@ -100,23 +98,20 @@ st.markdown(f"""
 
 for r in source_data:
     fare, clean, exp = r['Fare'], r['Clean'], r['Exp']
-    res_id = r['ID']
-    date_display = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
-
     comm = round(fare * (owner_pct / 100), 2)
     t_fare, t_comm, t_cln, t_exp = t_fare + fare, t_comm + comm, t_cln + clean, t_exp + exp
 
     row = {
-        "ID": res_id, 
-        "Check-in/Out": date_display, 
+        "ID": r['ID'], 
+        "Check-in/Out": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", 
         "Accommodation": fare, 
         "Commission": comm, 
         "Cleaning": clean,
         "Expenses": exp, 
-        "Invoice": f"https://app.guesty.com/reservations/{res_id}"
+        "Invoice": f"https://app.guesty.com/reservations/{r['ID']}"
     }
     
-    # Net Payout Logic: Revenue - PMC - Clean - Exp
+    # Net Payout Logic (Always Gross - PMC - Clean - Exp for Payout)
     if conf['type'] == "Draft":
         row["Net Payout"] = (comm + clean + exp)
     else:
@@ -139,8 +134,13 @@ with c5:
 
 st.divider()
 
-# --- 7. TABLE (Net Payout at the end) ---
-order = ["ID", "Check-in/Out", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
+# --- 7. TABLE (Dynamic Visibility) ---
+if conf['type'] == "Payout":
+    # Hide Cleaning for Payout owners
+    order = ["ID", "Check-in/Out", "Accommodation", "Commission", "Expenses", "Invoice", "Net Payout"]
+else:
+    # Keep Cleaning for Draft owners
+    order = ["ID", "Check-in/Out", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
 
 config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
