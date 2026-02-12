@@ -19,32 +19,16 @@ def get_mimic_data(owner):
         ]
     return [{"ID": "RES-301", "Prop": "MOUNTAIN LODGE", "Addr": "55 PEAK ROAD", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
 
-# --- 2. SIDEBAR (ALL CAPS) ---
+# --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("📂 NAVIGATION")
     mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
-    
     st.divider()
     active_owner = st.selectbox("SWITCH ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
     conf = st.session_state.owner_db[active_owner]
-    
     st.divider()
     st.header("📅 SELECT PERIOD")
-    report_type = st.selectbox("CONTEXT", ["BY MONTH", "FULL YEAR", "YTD", "BETWEEN DATES"], index=0)
-    
-    # Persistent Date Logic
     today, start_date, end_date = date.today(), date(2026, 2, 1), date(2026, 2, 28)
-
-    st.divider()
-    with st.expander("👤 OWNER MANAGEMENT"):
-        target = st.selectbox("EDIT/DELETE", ["+ ADD NEW"] + list(st.session_state.owner_db.keys()))
-        curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "DRAFT"})
-        n_name = st.text_input("NAME", value="" if target == "+ ADD NEW" else target).upper().strip()
-        n_pct = st.number_input("COMM %", 0.0, 100.0, float(curr["pct"]))
-        n_style = st.selectbox("STYLE", ["DRAFT", "PAYOUT"], index=0 if curr["type"] == "DRAFT" else 1)
-        if st.button("💾 SAVE SETTINGS"):
-            st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_style}
-            st.rerun()
 
 # --- 3. CALCULATION ENGINE ---
 all_owners_data = []
@@ -58,10 +42,19 @@ for name, settings in st.session_state.owner_db.items():
         o_cln += c; o_exp += e; o_fare += f
     
     is_draft = settings['type'] == "DRAFT"
-    top_revenue = (o_fare + o_cln) if is_draft else o_fare
-    net_revenue = o_fare - (o_cln if is_draft else 0) - o_comm - o_exp
-    draft_total = (o_comm + o_cln + o_exp) if is_draft else 0
-    ach_total = net_revenue if not is_draft else 0
+    
+    # --- FIXED LOGIC ---
+    if is_draft:
+        top_revenue = o_fare + o_cln  # GROSS PAYOUT
+        # Net = Gross - Cln - Comm - Exp (which is essentially Fare - Comm - Exp)
+        net_revenue = top_revenue - o_cln - o_comm - o_exp
+        draft_total = o_comm + o_cln + o_exp
+        ach_total = 0
+    else:
+        top_revenue = o_fare  # ACCOMMODATION
+        net_revenue = o_fare - o_comm - o_exp
+        draft_total = 0
+        ach_total = net_revenue
     
     all_owners_data.append({
         "OWNER": name, "TYPE": settings['type'], "REVENUE": top_revenue, "PCT": settings['pct'],
@@ -69,7 +62,7 @@ for name, settings in st.session_state.owner_db.items():
     })
     total_ov2 += o_comm
 
-# --- 4. MAIN CONTENT (ALL CAPS) ---
+# --- 4. MAIN CONTENT ---
 if mode == "OWNER STATEMENTS":
     st.markdown(f"<div style='text-align: center;'><h1>OWNER STATEMENT</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} TO {end_date}</p></div>", unsafe_allow_html=True)
     
@@ -101,27 +94,31 @@ if mode == "OWNER STATEMENTS":
         for _, r in sub.iterrows():
             f, c, e = r['Fare'], r['Cln'], r['Exp']
             cm = round(f * (conf['pct'] / 100), 2)
-            top_line = (f + c) if conf['type'] == "DRAFT" else f
-            nr = f - (c if conf['type'] == "DRAFT" else 0) - cm - e
+            
+            # Row Logic Fix
+            if conf['type'] == "DRAFT":
+                gp = f + c
+                nr = gp - c - cm - e
+                rev_col_name = "GROSS PAYOUT"
+            else:
+                gp = f
+                nr = f - cm - e
+                rev_col_name = "ACCOMMODATION"
+                
             stay_dates = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
-            row = {"ID": r['ID'], "CHECK-IN/OUT": stay_dates, "REV": top_line, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "INVOICE": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "NET REVENUE": nr}
+            row = {"ID": r['ID'], "CHECK-IN/OUT": stay_dates, rev_col_name: gp, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "INVOICE": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "NET REVENUE": nr}
             rows.append(row)
         
-        rev_col = "GROSS PAYOUT" if conf['type'] == "DRAFT" else "ACCOMMODATION"
-        final_df = pd.DataFrame(rows).rename(columns={"REV": rev_col})
-        st.dataframe(final_df, use_container_width=True, hide_index=True, column_config={
-            rev_col: st.column_config.NumberColumn(format="$%.2f"),
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={
+            "GROSS PAYOUT": st.column_config.NumberColumn(format="$%.2f"),
+            "ACCOMMODATION": st.column_config.NumberColumn(format="$%.2f"),
             "CLEANING": st.column_config.NumberColumn(format="$%.2f"),
             "PMC COMM": st.column_config.NumberColumn(format="$%.2f"),
             "EXPENSED": st.column_config.NumberColumn(format="$%.2f"),
-            "NET REVENUE": st.column_config.NumberColumn(format="$%.2f"),
-            "INVOICE": st.column_config.LinkColumn("INVOICE", display_text="🔗 VIEW")
+            "NET REVENUE": st.column_config.NumberColumn(format="$%.2f")
         })
 
 elif mode == "PMC REPORT":
     st.title("PMC INTERNAL CONTROL REPORT")
     st.metric("TRANSFER TO OV2", f"${total_ov2:,.2f}")
     st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True)
-
-else:
-    st.title("TAX COMPLIANCE REPORT")
