@@ -33,7 +33,7 @@ def fetch_master_data(month, year):
     # Get Owners
     owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers).json().get('results', [])
     
-    # Get Reservations
+    # Get Reservations (Confimed only)
     res_filter = json.dumps([
         {"field": "checkInDateLocalized", "operator": "$gte", "value": start},
         {"field": "checkInDateLocalized", "operator": "$lte", "value": end},
@@ -85,18 +85,20 @@ if owners_list:
 
                 detailed_rows.append({
                     "Property": res.get('listing', {}).get('title', 'Unknown'),
+                    "Guest Name": res.get('guest', {}).get('fullName', 'Guest'),
+                    "Check-In": res.get('checkInDateLocalized'),
                     "Accommodation": acc,
                     "Management Fee": mgmt,
                     "Cleaning Fee": cln,
                     "Expenses": res_exp,
                     "Web Fee": web_f,
-                    "Net Income": acc - mgmt - web_f - res_exp
+                    "Net to Owner": acc - mgmt - web_f - res_exp
                 })
 
         if detailed_rows:
             df = pd.DataFrame(detailed_rows)
             
-            # --- 3. SUMMARY SECTION (PAGE 1) ---
+            # --- 3. PAGE 1: FINANCIAL SUMMARY ---
             st.header(f"💰 Financial Summary: {selected_owner_name}")
             c1, c2, c3, c4 = st.columns(4)
             
@@ -109,19 +111,16 @@ if owners_list:
             
             with c4:
                 if is_eran:
-                    # Eran Draft Logic
                     total_to_draft = df['Management Fee'].sum() + df['Cleaning Fee'].sum() + total_all_exp + df['Web Fee'].sum()
                     st.metric("TOTAL TO DRAFT", f"${total_to_draft:,.2f}", delta_color="inverse")
                 else:
-                    # Standard Payout Logic
-                    final_pay = df['Net Income'].sum() - df['Cleaning Fee'].sum() - listing_exp
+                    final_pay = df['Net to Owner'].sum() - df['Cleaning Fee'].sum() - listing_exp
                     st.metric("NET PAYOUT", f"${final_pay:,.2f}")
 
-            # --- 4. DETAILED BREAKDOWN (PAGE 2) ---
+            # --- 4. PAGE 2: DETAILED RESERVATIONS ---
             st.divider()
             st.header("📝 Detailed Reservation Review")
-            # Show the specific breakdown for each property
-            st.dataframe(df[["Property", "Accommodation", "Management Fee", "Cleaning Fee", "Expenses", "Net Income"]], use_container_width=True)
+            st.dataframe(df, use_container_width=True)
             
             if listing_exp > 0:
                 st.subheader("🛠️ External Property Invoices")
@@ -130,8 +129,8 @@ if owners_list:
 
             # Export Button
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Statement (Save as PDF)", data=csv, file_name=f"{selected_owner_name}_Statement.csv", mime='text/csv')
+            st.download_button("📥 Download Statement Data (CSV)", data=csv, file_name=f"{selected_owner_name}_Statement.csv", mime='text/csv')
         else:
-            st.warning("No reservations found for this month.")
+            st.warning("No confirmed reservations found for this month.")
 else:
     st.error("API Error: Check connection and Guesty settings.")
