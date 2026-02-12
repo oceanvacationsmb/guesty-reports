@@ -29,11 +29,6 @@ with st.sidebar:
     st.header("📅 Period")
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     y = st.number_input("Year", value=2026)
-    
-    with st.expander("⚙️ Settings: Add/Edit Owners"):
-        edit_list = list(st.session_state.owner_db.keys())
-        target_owner = st.selectbox("Choose Owner to Modify", ["+ Add New"] + edit_list)
-        # Settings logic remains the same...
 
 # --- 4. CALCULATIONS ---
 conf = st.session_state.owner_db[active_owner]
@@ -44,62 +39,63 @@ t_fare = t_comm = t_exp = t_cln = 0
 
 for res in raw_res:
     fare = res['Fare']
-    comm = round(fare * (conf['pct'] / 100), 2) # Use round to prevent long decimals
+    comm = round(fare * (conf['pct'] / 100), 2)
     t_fare += fare
     t_comm += comm
     t_exp += res['Exp']
     t_cln += res['Clean']
     
-    # We keep numbers as FLOAT here so the NumberColumn can format them correctly
     row = {
         "Reservation ID": res['ID'],
         "Dates (In/Out)": res['Dates'],
         "Accommodation": float(fare),
-        "PMC Commission": float(comm)
+        "PMC Commission": float(comm),
+        "Expenses": float(res['Exp']),
+        "Invoice Link": res['Invoice']
     }
     if conf['type'] == "Draft":
         row["Cleaning Fee"] = float(res['Clean'])
-    
-    row["Expenses"] = float(res['Exp'])
-    row["Invoice Link"] = res['Invoice']
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-# --- 5. CLEAN SUMMARY REPORT ---
+# Define column order to ensure Expenses is always last
+base_order = ["Reservation ID", "Dates (In/Out)", "Accommodation", "PMC Commission"]
+if conf['type'] == "Draft":
+    base_order.append("Cleaning Fee")
+base_order.extend(["Expenses", "Invoice Link"])
+
+# --- 5. RENDER CLEAN SUMMARY ---
 st.header(f"Settlement Report: {active_owner}")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric("Total Commission", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"${t_exp:,.2f}")
-
 with c4:
-    if conf['type'] == "Draft":
-        total_val = t_comm + t_cln + t_exp
-        st.metric("TOTAL TO DRAFT", f"${total_val:,.2f}")
-    else:
-        total_val = t_fare - t_comm - t_exp
-        st.metric("NET PAYOUT", f"${total_val:,.2f}")
+    total_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
+    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
-# --- 6. LOCKED & FORMATTED TABLE ---
-# Using specific NumberColumn configuration to fix alignment, decimals, and red warnings
+# --- 6. COMPACT TABLE CONFIGURATION ---
+# Removed '$' from titles and set width to "small" or "medium" to shrink the table
 column_config = {
-    "Accommodation": st.column_config.NumberColumn("$ Accommodation", format="$%.2f", width="medium"),
-    "PMC Commission": st.column_config.NumberColumn("$ PMC Commission", format="$%.2f", width="medium"),
-    "Cleaning Fee": st.column_config.NumberColumn("$ Cleaning Fee", format="$%.2f", width="medium"),
-    "Expenses": st.column_config.NumberColumn("$ Expenses", format="$%.2f", width="medium"),
-    "Invoice Link": st.column_config.LinkColumn("View Invoice", display_text="🔗 View")
+    "Reservation ID": st.column_config.TextColumn("Reservation ID", width="small"),
+    "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%.2f", width="small"),
+    "PMC Commission": st.column_config.NumberColumn("PMC Commission", format="$%.2f", width="small"),
+    "Cleaning Fee": st.column_config.NumberColumn("Cleaning Fee", format="$%.2f", width="small"),
+    "Expenses": st.column_config.NumberColumn("Expenses", format="$%.2f", width="small"),
+    "Invoice Link": st.column_config.LinkColumn("Invoice", display_text="🔗 View", width="small")
 }
 
 st.dataframe(
     df, 
     use_container_width=True, 
     column_config=column_config, 
+    column_order=base_order,
     hide_index=True,
-    on_select="ignore" # Makes table non-clickable
+    on_select="ignore"
 )
 
 # Export
