@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import pd as pd
 import requests
 from datetime import datetime, date, timedelta
 
@@ -96,12 +96,10 @@ if token:
               "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'}
     res = requests.get(res_url, headers=headers, params=params)
     source_data = res.json().get("results", []) if res.status_code == 200 else []
-    status_msg = f"LIVE API Mode | Style: {conf['type']}"
-    status_color = "#00FF00" # Green for Live
+    data_type = "LIVE API"
 else:
     source_data = get_mimic_reservations()
-    status_msg = f"Source: MIMIC ({owner_pct:.0f}%) Mode | Style: {conf['type']}"
-    status_color = "#FFD700" # Yellow for Mimic
+    data_type = f"MIMIC ({owner_pct:.0f}%)"
 
 for r in source_data:
     if token:
@@ -128,16 +126,7 @@ df = pd.DataFrame(rows)
 
 # --- 5. RENDER ---
 st.header(f"Reservation Report: {active_owner}")
-
-# BIG BOLD YELLOW STATUS
-st.markdown(f"""
-    <div style="background-color: rgba(255, 215, 0, 0.1); padding: 10px; border-radius: 5px; border-left: 5px solid {status_color};">
-        <span style="color: {status_color}; font-size: 20px; font-weight: bold;">
-            {status_msg}
-        </span>
-    </div>
-    <br>
-    """, unsafe_allow_html=True)
+st.caption(f"Source: {data_type} Mode | Style: {conf['type']}")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
