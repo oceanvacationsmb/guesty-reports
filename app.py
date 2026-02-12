@@ -125,12 +125,11 @@ for r in source_data:
 df = pd.DataFrame(rows)
 
 # --- 5. RENDER ---
-st.header(f"Settlement Report: {active_owner}")
+st.header(f"Reservation Report: {active_owner}")
 st.caption(f"Source: {data_type} Mode | Style: {conf['type']}")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
-# Dynamic Commission Label based on owner settings
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"${t_exp:,.2f}")
 with c4:
@@ -146,4 +145,4 @@ config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
 
 if not token:
-    st.info(f"💡 Mimic data shown for {active_owner} at {owner_pct:.0f}%. Enter API Secret to switch to Live Mode.")
+    st.info(f"💡 Mimic data shown for {active_owner}. Enter API Secret in the sidebar expander to switch to Live Mode.")
