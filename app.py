@@ -43,16 +43,14 @@ for name, settings in st.session_state.owner_db.items():
     
     is_draft = settings['type'] == "DRAFT"
     
-    # --- FIXED LOGIC ---
     if is_draft:
         top_revenue = o_fare + o_cln  # GROSS PAYOUT
-        # Net = Gross - Cln - Comm - Exp (which is essentially Fare - Comm - Exp)
         net_revenue = top_revenue - o_cln - o_comm - o_exp
         draft_total = o_comm + o_cln + o_exp
         ach_total = 0
     else:
         top_revenue = o_fare  # ACCOMMODATION
-        net_revenue = o_fare - o_comm - o_exp
+        net_revenue = o_fare - o_comm - o_exp # UPDATED PAYOUT FORMULA
         draft_total = 0
         ach_total = net_revenue
     
@@ -81,7 +79,7 @@ if mode == "OWNER STATEMENTS":
         m1.metric("ACCOMMODATION", f"${s['REVENUE']:,.2f}")
         m2.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
         m3.metric("EXPENSED", f"${s['EXP']:,.2f}")
-        m4.metric("NET REVENUE", f"${s['NET']:,.2f}")
+        m4.metric("NET REVENUE", f"${s['NET']:,.2f}") # NOW SHOWS ACC - PMC - EXP
         m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}")
 
     st.divider()
@@ -95,18 +93,17 @@ if mode == "OWNER STATEMENTS":
             f, c, e = r['Fare'], r['Cln'], r['Exp']
             cm = round(f * (conf['pct'] / 100), 2)
             
-            # Row Logic Fix
             if conf['type'] == "DRAFT":
                 gp = f + c
                 nr = gp - c - cm - e
                 rev_col_name = "GROSS PAYOUT"
+                row = {"ID": r['ID'], "CHECK-IN/OUT": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", rev_col_name: gp, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "INVOICE": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "NET REVENUE": nr}
             else:
                 gp = f
-                nr = f - cm - e
+                nr = f - cm - e # PAYOUT LOGIC
                 rev_col_name = "ACCOMMODATION"
+                row = {"ID": r['ID'], "CHECK-IN/OUT": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", rev_col_name: gp, "PMC COMM": cm, "EXPENSED": e, "INVOICE": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "NET REVENUE": nr}
                 
-            stay_dates = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
-            row = {"ID": r['ID'], "CHECK-IN/OUT": stay_dates, rev_col_name: gp, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "INVOICE": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "NET REVENUE": nr}
             rows.append(row)
         
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={
