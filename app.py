@@ -138,36 +138,40 @@ for r in source_data:
         "Invoice": f"https://app.guesty.com/reservations/{res_id}"
     }
     
-    # DYNAMIC LOGIC BASED ON OWNER TYPE
+    # LOGIC UPDATE:
+    # Gross Payout (Accommodation + Cleaning)
+    gross_payout = (fare + clean)
+    
     if conf['type'] == "Draft":
         row["Net Payout"] = (comm + clean + exp)
     else:
-        # UPDATED: Net Payout = Accommodation + Cleaning
-        row["Net Payout"] = (fare + clean)
+        row["Net Payout"] = gross_payout
         
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-# --- 6. METRICS (5 COLUMNS) ---
+# --- 6. SUMMARY METRICS ---
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Gross Revenue", f"${t_fare:,.2f}")
+# Calculation: Accommodation + Cleaning
+total_gross_payout = t_fare + t_cln
+
+c1.metric("Gross Payout", f"${total_gross_payout:,.2f}")
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
 c3.metric("Cleaning Total", f"${t_cln:,.2f}")
 c4.metric("Total Expenses", f"${t_exp:,.2f}")
 
 with c5:
     if conf['type'] == "Draft":
-        total_val = (t_comm + t_cln + t_exp)
-        st.metric("TOTAL TO DRAFT", f"${total_val:,.2f}")
+        final_val = (t_comm + t_cln + t_exp)
+        st.metric("TOTAL TO DRAFT", f"${final_val:,.2f}")
     else:
-        # UPDATED: Total Net Payout = Total Fare + Total Cleaning
-        total_val = (t_fare + t_cln)
-        st.metric("NET PAYOUT", f"${total_val:,.2f}")
+        final_val = total_gross_payout
+        st.metric("NET PAYOUT", f"${final_val:,.2f}")
 
 st.divider()
 
-# --- 7. FORMATTED TABLE ---
+# --- 7. TABLE ---
 order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
 config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
