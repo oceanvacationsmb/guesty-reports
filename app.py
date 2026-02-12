@@ -32,17 +32,9 @@ def get_mimic_reservations():
 # --- 3. DASHBOARD UI ---
 st.set_page_config(page_title="PMC Statement Tool", layout="wide")
 
-# Center Aligned Headers
-st.markdown(f"""
-    <div style="text-align: center;">
-        <h1 style="margin-bottom: 0;">PMC Statement Tool</h1>
-        <h3 style="margin-top: 0; color: #555;">Reservation Report: {st.session_state.get('active_owner', 'ERAN')}</h3>
-    </div>
-    """, unsafe_allow_html=True)
-
 with st.sidebar:
     st.header("📊 View Report")
-    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()), key='active_owner')
+    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()), key='active_owner_sb')
     
     st.divider()
     st.header("📅 Select Period")
@@ -90,7 +82,7 @@ with st.sidebar:
             st.rerun()
 
 # --- 4. CALCULATIONS ---
-token = get_guesty_token(c_id, c_secret)
+token = get_guest_token(c_id, c_secret)
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
 rows = []
@@ -108,9 +100,19 @@ else:
     source_data = get_mimic_reservations()
     status_msg = f"Source: MIMIC ({owner_pct:.0f}%) Mode | Style: {conf['type']}"
 
-# Centered Status Message
-st.markdown(f"<p style='text-align: center; color: gray;'>{status_msg}</p>", unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
+# --- 5. RENDER HEADERS (YELLOW & CENTERED) ---
+st.markdown(f"""
+    <div style="text-align: center;">
+        <h1 style="margin-bottom: 0;">PMC Statement Tool</h1>
+        <h2 style="margin-top: 10px; margin-bottom: 5px; color: #FFD700; font-weight: bold;">
+            Reservation Report: {active_owner}
+        </h2>
+        <p style="color: #FFD700; font-size: 1.2rem; font-weight: bold; margin-top: 0;">
+            {status_msg}
+        </p>
+    </div>
+    <br>
+    """, unsafe_allow_html=True)
 
 for r in source_data:
     if token:
@@ -135,7 +137,7 @@ for r in source_data:
 
 df = pd.DataFrame(rows)
 
-# --- 5. RENDER ---
+# --- 6. METRICS & TABLE ---
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
