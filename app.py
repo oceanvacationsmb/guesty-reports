@@ -34,7 +34,8 @@ st.set_page_config(page_title="PMC Statement", layout="wide")
 
 with st.sidebar:
     st.header("📊 View Report")
-    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()), key='active_owner_sb')
+    # Using the sidebar to set the active owner
+    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()), key='active_owner')
     
     st.divider()
     st.header("📅 Select Period")
@@ -82,7 +83,7 @@ with st.sidebar:
             st.rerun()
 
 # --- 4. CALCULATIONS ---
-token = get_guest_token(c_id, c_secret)
+token = get_guesty_token(c_id, c_secret)
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
 rows = []
@@ -100,7 +101,7 @@ else:
     source_data = get_mimic_reservations()
     status_msg = f"Source: MIMIC ({owner_pct:.0f}%) Mode | Style: {conf['type']}"
 
-# --- 5. RENDER HEADERS (CENTERED & YELLOW) ---
+# --- 5. CENTERED YELLOW HEADERS ---
 st.markdown(f"""
     <div style="text-align: center;">
         <h1 style="margin-bottom: 0;">PMC Statement</h1>
