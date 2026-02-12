@@ -22,7 +22,8 @@ def get_mimic_data(owner):
 # --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("📂 NAVIGATION")
-    mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
+    # Updated: OWNER STATEMENTS -> STATEMENTS
+    mode = st.radio("SELECT REPORT TYPE", ["STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
     
     st.divider()
     active_owner = st.selectbox("SWITCH ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
@@ -89,12 +90,12 @@ for name, settings in st.session_state.owner_db.items():
     
     all_owners_data.append({
         "OWNER": name, "TYPE": settings['type'], "REVENUE": top_rev, "PCT": settings['pct'],
-        "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, "NET": net_rev, "DRAFT": draft_amt, "ACH": ach_total if 'ach_total' in locals() else ach_amt
+        "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, "NET": net_rev, "DRAFT": draft_amt, "ACH": ach_amt
     })
     total_ov2 += o_comm
 
 # --- 4. MAIN CONTENT ---
-if mode == "OWNER STATEMENTS":
+if mode == "STATEMENTS":
     st.markdown(f"<div style='text-align: center;'><h1>OWNER STATEMENT</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} TO {end_date}</p></div>", unsafe_allow_html=True)
     
     s = next(item for item in all_owners_data if item["OWNER"] == active_owner)
