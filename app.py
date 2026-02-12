@@ -23,7 +23,6 @@ st.title("🛡️ Guesty Automated Settlement Dashboard")
 
 with st.sidebar:
     st.header("📊 View Report")
-    # Clean owner selection - No "Draft" wording here
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
     
     st.divider()
@@ -35,10 +34,11 @@ with st.sidebar:
     st.header("⚙️ Settings")
     with st.expander("Manage Owners"):
         edit_list = list(st.session_state.owner_db.keys())
-        target_owner = st.selectbox("Select Owner to Edit", ["+ Add New"] + edit_list)
+        target_owner = st.selectbox("Select Owner to Edit/Delete", ["+ Add New"] + edit_list)
         
-        # Logic to clean name if user tries to type (DRAFT) manually
-        name_input = st.text_input("Owner Name", value="" if target_owner == "+ Add New" else target_owner).upper().replace("(DRAFT)", "").strip()
+        # Strip "(DRAFT)" from names automatically
+        raw_name = st.text_input("Owner Name", value="" if target_owner == "+ Add New" else target_owner)
+        name_input = raw_name.upper().replace("(DRAFT)", "").replace("DRAFT", "").strip()
         
         current_pct = st.session_state.owner_db.get(target_owner, {"pct": 20.0})["pct"] if target_owner != "+ Add New" else 20.0
         current_type = st.session_state.owner_db.get(target_owner, {"type": "Draft"})["type"] if target_owner != "+ Add New" else "Draft"
@@ -46,9 +46,18 @@ with st.sidebar:
         upd_pct = st.number_input("Commission %", 0.0, 100.0, float(current_pct))
         upd_type = st.selectbox("Settlement Style", ["Draft", "Payout"], index=0 if current_type == "Draft" else 1)
         
-        if st.button("💾 Save Settings"):
-            st.session_state.owner_db[name_input] = {"pct": upd_pct, "type": upd_type}
-            st.rerun()
+        col_save, col_del = st.columns(2)
+        with col_save:
+            if st.button("💾 Save Settings"):
+                st.session_state.owner_db[name_input] = {"pct": upd_pct, "type": upd_type}
+                st.rerun()
+        
+        with col_del:
+            # Delete option only available for existing owners
+            if target_owner != "+ Add New":
+                if st.button("🗑️ Delete Owner", type="primary"):
+                    del st.session_state.owner_db[target_owner]
+                    st.rerun()
 
 # --- 4. CALCULATIONS ---
 conf = st.session_state.owner_db[active_owner]
@@ -130,6 +139,6 @@ st.dataframe(
     on_select="ignore"
 )
 
-# Export
+# Export (JPG-style CSV per preference)
 csv = df.to_csv(index=False).encode('utf-8')
 st.download_button(f"📥 Download {active_owner} Statement", data=csv, file_name=f"{active_owner}_Statement.csv")
