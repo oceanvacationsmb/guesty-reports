@@ -22,7 +22,6 @@ def get_mimic_data(owner):
 # --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("📂 NAVIGATION")
-    # UPDATED: Changed from "OWNER STATEMENTS" to "STATEMENTS"
     mode = st.radio("SELECT REPORT TYPE", ["STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
     
     st.divider()
@@ -34,6 +33,7 @@ with st.sidebar:
     report_type = st.selectbox("CONTEXT", ["BY MONTH", "FULL YEAR", "YTD", "BETWEEN DATES"], index=0)
     
     today = date.today()
+    # Date logic for start_date and end_date
     if report_type == "BY MONTH":
         c1, c2 = st.columns(2)
         months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
@@ -49,7 +49,6 @@ with st.sidebar:
         start_date, end_date = date(today.year, 1, 1), today
 
     st.divider()
-    # Matches screenshot: Expanders for Management and API
     with st.expander("👤 OWNER MANAGEMENT", expanded=False):
         target = st.selectbox("EDIT/DELETE", ["+ ADD NEW"] + list(st.session_state.owner_db.keys()))
         curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "DRAFT"})
@@ -60,9 +59,10 @@ with st.sidebar:
             st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_style}
             st.rerun()
 
+    # UPDATED: Added CLIENT SECRET (Key) field to match your requirement
     with st.expander("🔌 API CONNECTION", expanded=True):
         st.text_input("CLIENT ID", value="0oaszuo22iOg...", type="password")
-        # SAVE & RUN button styled to match red/orange action color
+        st.text_input("CLIENT SECRET (KEY)", value="", type="password") 
         if st.button("🔄 SAVE & RUN", type="primary", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
@@ -96,7 +96,7 @@ for name, settings in st.session_state.owner_db.items():
     })
     total_ov2 += o_comm
 
-# --- 4. MAIN CONTENT ---
+# --- 4. MAIN CONTENT (STATEMENTS) ---
 if mode == "STATEMENTS":
     st.markdown(f"<div style='text-align: center;'><h1>OWNER STATEMENT</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} TO {end_date}</p></div>", unsafe_allow_html=True)
     
