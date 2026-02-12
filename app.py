@@ -13,9 +13,9 @@ if 'owner_db' not in st.session_state:
 def get_mock_reservations():
     return [
         {"ID": "RES-55421", "Dates": "Feb 01 - Feb 05", "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0},
-        {"ID": "RES-55429", "Dates": "Feb 10 - Feb 14", "Fare": 850.0, "Clean": 100.0, "Exp": 0.0},
-        {"ID": "RES-55435", "Dates": "Feb 18 - Feb 22", "Fare": 2100.0, "Clean": 180.0, "Exp": 45.0},
-        {"ID": "RES-55440", "Dates": "Feb 25 - Feb 28", "Fare": 950.0, "Clean": 120.0, "Exp": 10.0}
+        {"ID": "RES-55429", "Dates": "Feb 10 - Feb 14", "Fare": 850.50, "Clean": 100.0, "Exp": 0.0},
+        {"ID": "RES-55435", "Dates": "Feb 18 - Feb 22", "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10},
+        {"ID": "RES-55440", "Dates": "Feb 25 - Feb 28", "Fare": 5950.0, "Clean": 120.0, "Exp": 10.0}
     ]
 
 # --- 3. DASHBOARD UI ---
@@ -47,7 +47,7 @@ with st.sidebar:
             st.session_state.owner_db[name_input] = {"pct": new_pct, "type": new_type, "web_fee": 0.0}
             st.rerun()
 
-# --- 4. CALCULATION LOGIC ---
+# --- 4. CALCULATION & FORMATTING LOGIC ---
 conf = st.session_state.owner_db[active_owner]
 raw_res = get_mock_reservations()
 rows = []
@@ -57,33 +57,32 @@ for res in raw_res:
     pct = conf['pct']
     comm_amt = fare * (pct / 100)
     
-    # Core Data
+    # Core Data with formatting for the table display
     row = {
         "Reservation ID": res['ID'],
         "Dates (In/Out)": res['Dates'],
-        "Accommodation": fare,
-        "PMC %": f"{pct}%",
-        "PMC Commission": comm_amt,
-        "Expenses": res['Exp']
+        "Accommodation": f"{fare:,.2f}",
+        "PMC %": f"{pct:,.1f}%",
+        "PMC Commission": f"{comm_amt:,.2f}",
+        "Expenses": f"{res['Exp']:,.2f}"
     }
     
-    # DRAFT Logic: Add Cleaning Fee if it's a Draft report
     if conf['type'] == "Draft":
-        row["Cleaning Fee"] = res['Clean']
+        row["Cleaning Fee"] = f"{res['Clean']:,.2f}"
     
     rows.append(row)
 
-df = pd.DataFrame(rows)
+df_display = pd.DataFrame(rows)
 
 # --- 5. RENDER DISPLAY ---
 st.header(f"Settlement Report: {active_owner}")
 st.subheader(f"Type: {conf['type']} | Commission: {conf['pct']}%")
 
-# Metrics Summary
+# Metrics Summary (Calculating from raw numbers for accuracy)
 c1, c2, c3, c4 = st.columns(4)
-total_fare = df['Accommodation'].sum()
-total_comm = df['PMC Commission'].sum()
-total_exp = df['Expenses'].sum()
+total_fare = sum(r['Fare'] for r in raw_res)
+total_comm = sum(r['Fare'] * (conf['pct'] / 100) for r in raw_res)
+total_exp = sum(r['Exp'] for r in raw_res)
 
 c1.metric("Gross Revenue", f"${total_fare:,.2f}")
 c2.metric("Total Commission", f"${total_comm:,.2f}")
@@ -91,17 +90,17 @@ c3.metric("Total Expenses", f"${total_exp:,.2f}")
 
 with c4:
     if conf['type'] == "Draft":
-        total_clean = df['Cleaning Fee'].sum()
+        total_clean = sum(r['Clean'] for r in raw_res)
         total_draft = total_comm + total_clean + total_exp
         st.metric("TOTAL TO DRAFT", f"${total_draft:,.2f}")
     else:
-        # Payout logic: Gross - Comm - Expenses
         net_payout = total_fare - total_comm - total_exp
         st.metric("NET PAYOUT", f"${net_payout:,.2f}")
 
 st.divider()
-st.dataframe(df, use_container_width=True)
+# Use st.table or st.dataframe for a clean look
+st.dataframe(df_display, use_container_width=True)
 
-# Export
-csv = df.to_csv(index=False).encode('utf-8')
+# Export (Note: CSVs usually keep raw numbers, but we'll export the formatted version)
+csv = df_display.to_csv(index=False).encode('utf-8')
 st.download_button(f"📥 Export {active_owner} CSV", data=csv, file_name=f"{active_owner}.csv")
