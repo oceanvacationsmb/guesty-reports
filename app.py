@@ -1,5 +1,5 @@
 import streamlit as st
-import pd as pd
+import pandas as pd
 import requests
 from datetime import datetime, date, timedelta
 
@@ -143,3 +143,6 @@ config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net P
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
+
+if not token:
+    st.info(f"💡 Mimic data shown for {active_owner}. Enter API Secret in the sidebar expander to switch to Live Mode.")
