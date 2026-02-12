@@ -138,30 +138,29 @@ for r in source_data:
         "Invoice": f"https://app.guesty.com/reservations/{res_id}"
     }
     
-    # FIXED CALCULATION LOGIC
     if conf['type'] == "Draft":
-        row["Net Payout"] = (comm + clean + exp)  # PMC + Cleaning + Expenses
+        row["Net Payout"] = (comm + clean + exp)
     else:
-        row["Net Payout"] = (fare - comm - exp)   # Fare - PMC - Expenses
+        row["Net Payout"] = (fare - comm - exp)
         
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-# --- 6. METRICS & TABLE ---
-c1, c2, c3, c4 = st.columns(4)
+# --- 6. METRICS (5 COLUMNS) ---
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
-c3.metric("Total Expenses", f"${t_exp:,.2f}")
+c3.metric("Cleaning Total", f"${t_cln:,.2f}")
+c4.metric("Total Expenses", f"${t_exp:,.2f}")
 
-with c4:
-    # Metric also reflects the formula change
+with c5:
     total_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
     st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
-# Column order and numeric formatting (right-aligned by default for NumberColumn)
+# --- 7. FORMATTED TABLE ---
 order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
 config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
