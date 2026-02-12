@@ -56,7 +56,8 @@ with st.sidebar:
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     y = st.number_input("Year", value=2026)
     st.divider()
-    force_mock = st.checkbox("Force Test Data (Ignore API)", value=False)
+    # Checkbox to toggle between Test and Real mode
+    force_mock = st.checkbox("Show Test Data (for layout check)", value=False)
     if st.button("🔄 Refresh Connection"):
         st.cache_data.clear()
         st.rerun()
@@ -64,9 +65,10 @@ with st.sidebar:
 # Data Logic
 owners_list, res_list = fetch_guesty_data(m, y)
 
-# AUTO-SWITCH: Use live data if available, otherwise use mock data
+# --- THE SWITCHER LOGIC ---
 if owners_list and not force_mock:
-    st.success("✅ Live Connection: Showing Guesty Data")
+    # LIVE MODE: Pulling real names from Guesty
+    st.success("✅ Connected to Guesty Pro")
     owner_map = {f"{o.get('firstName', '')} {o.get('lastName', '')}".strip(): o for o in owners_list}
     selected_owner = st.selectbox("Select Owner", sorted(owner_map.keys()))
     
@@ -89,16 +91,18 @@ if owners_list and not force_mock:
                 "Net Income": acc - money.get('commission', 0)
             })
 else:
-    # MOCK DATA FALLBACK
-    st.info("💡 API Pending: Showing Sample Layout")
-    selected_owner = "ERAN - Sample (Live API Unavailable)"
-    is_eran = True
-    final_rows = [
-        {"Property": "Beachside Villa 101", "Guest": "John Doe", "Accommodation": 1200.0, "Management Fee": 240.0, "Cleaning Fee": 150.0, "Expenses": 50.0, "Net Income": 760.0},
-        {"Property": "Mountain Retreat", "Guest": "Jane Smith", "Accommodation": 850.0, "Management Fee": 170.0, "Cleaning Fee": 100.0, "Expenses": 0.0, "Net Income": 580.0}
-    ]
+    # TEST MODE: Showing a fake list so you can see the selector
+    st.info("💡 API Pending: Showing Test Switcher")
+    selected_owner = st.selectbox("Select Owner (TEST MODE)", ["ERAN - Example", "SMITH - Example", "DOE - Example"])
+    is_eran = "ERAN" in selected_owner.upper()
+    
+    # Fake data changes based on selection
+    if "ERAN" in selected_owner:
+        final_rows = [{"Property": "Villa 101", "Guest": "John Doe", "Accommodation": 1000.0, "Management Fee": 200.0, "Cleaning Fee": 100.0, "Expenses": 0.0, "Net Income": 700.0}]
+    else:
+        final_rows = [{"Property": "Beach House", "Guest": "Jane Smith", "Accommodation": 2000.0, "Management Fee": 400.0, "Cleaning Fee": 150.0, "Expenses": 50.0, "Net Income": 1400.0}]
 
-# --- RENDER THE TABLE (Same beautiful layout as before) ---
+# --- RENDER THE TABLE ---
 if final_rows:
     df = pd.DataFrame(final_rows)
     st.header(f"Financial Summary: {selected_owner}")
@@ -119,7 +123,7 @@ if final_rows:
             st.metric("TOTAL TO DRAFT", f"${draft_total:,.2f}")
         else:
             payout = df['Net Income'].sum() - total_cln
-            st.metric("NET PAYOUT", f"${payout:,.2f}")
+            st.metric("NET PAYOUT", f"${df['Net Income'].sum() - total_cln:,.2f}")
 
     st.divider()
     st.subheader("📝 Reservation Breakdown")
