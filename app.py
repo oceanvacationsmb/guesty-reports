@@ -5,7 +5,7 @@ from datetime import datetime
 import calendar
 import json
 
-# --- 1. GUESTY API ENGINE ---
+# --- 1. GUESTY API CONNECTION ---
 @st.cache_data(ttl=3600)
 def get_guesty_token():
     url = "https://open-api.guesty.com/oauth2/token"
@@ -30,10 +30,10 @@ def fetch_master_data(month, year):
     start = f"{year}-{month:02d}-01"
     end = f"{year}-{month:02d}-{calendar.monthrange(year, month)[1]}"
     
-    # Fetch Owners
+    # Get Owners
     owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers).json().get('results', [])
     
-    # Fetch Reservations
+    # Get Reservations
     res_filter = json.dumps([
         {"field": "checkInDateLocalized", "operator": "$gte", "value": start},
         {"field": "checkInDateLocalized", "operator": "$lte", "value": end},
@@ -42,17 +42,16 @@ def fetch_master_data(month, year):
     res_url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters={res_filter}"
     reservations = requests.get(res_url, headers=headers).json().get('results', [])
     
-    # Fetch Expenses
+    # Get Listing Expenses/Invoices
     exp_url = "https://open-api.guesty.com/v1/business-models-api/transactions/expenses-by-listing"
-    expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}).json().get('results', [])
+    expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}).json().get("results", [])
     
     return owners, reservations, expenses
 
-# --- 2. INTERFACE & OWNER SELECTION ---
-st.set_page_config(page_title="PMC Master Portal", layout="wide")
+# --- 2. THE DASHBOARD INTERFACE ---
+st.set_page_config(page_title="PMC Settlement Portal", layout="wide")
 st.title("🛡️ Guesty Automated Settlement Dashboard")
 
-# Month/Year Selection
 with st.sidebar:
     st.header("Settlement Period")
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
@@ -62,76 +61,77 @@ owners_list, res_list, exp_list = fetch_master_data(m, y)
 
 if owners_list:
     owner_map = {f"{o.get('firstName', '')} {o.get('lastName', '')}".strip(): o for o in owners_list}
-    selected_owner_name = st.selectbox("Select Owner", [""] + sorted(owner_map.keys()))
+    selected_owner_name = st.selectbox("Select Owner to Generate Statement", [""] + sorted(owner_map.keys()))
     
     if selected_owner_name:
-        selected_owner_obj = owner_map[selected_owner_name]
-        assigned_ids = selected_owner_obj.get('listingIds', [])
+        owner_obj = owner_map[selected_owner_name]
+        assigned_ids = owner_obj.get('listingIds', [])
+        detailed_rows = []
 
-        # --- 3. DATA PROCESSING ---
-        detailed_data = []
         for res in res_list:
             if res.get('listingId') in assigned_ids:
-                m_data = res.get('money', {})
-                acc = m_data.get('fare', 0)
-                mgmt = m_data.get('commission', 0)
-                cln = m_data.get('cleaningFee', 0)
+                money = res.get('money', {})
+                acc = money.get('fare', 0)
+                mgmt = money.get('commission', 0)
+                cln = money.get('cleaningFee', 0)
                 
-                # Manual expenses from extraCharges
-                res_exp = sum(c.get('amount', 0) for c in m_data.get('extraCharges', []) if "expense" in str(c.get('description', '')).lower())
+                # Manual expenses from reservation charges
+                res_exp = sum(c.get('amount', 0) for c in money.get('extraCharges', []) if "expense" in str(c.get('description', '')).lower())
                 
-                # Eran Web Fee logic
+                # Eran Web Fee Logic (1%)
                 is_eran = "ERAN" in selected_owner_name.upper()
                 src = res.get('source', '').lower()
                 web_f = (acc * 0.01) if (is_eran and "engine" in src) else 0
 
-                detailed_data.append({
+                detailed_rows.append({
                     "Property": res.get('listing', {}).get('title', 'Unknown'),
-                    "Guest": res.get('guest', {}).get('fullName', 'Guest'),
                     "Accommodation": acc,
                     "Management Fee": mgmt,
                     "Cleaning Fee": cln,
-                    "Web Fee": web_f,
                     "Expenses": res_exp,
+                    "Web Fee": web_f,
                     "Net Income": acc - mgmt - web_f - res_exp
                 })
 
-        if detailed_data:
-            df = pd.DataFrame(detailed_data)
+        if detailed_rows:
+            df = pd.DataFrame(detailed_rows)
             
-            # --- SUMMARY SECTION ---
-            st.header(f"Financial Summary: {selected_owner_name}")
+            # --- 3. SUMMARY SECTION (PAGE 1) ---
+            st.header(f"💰 Financial Summary: {selected_owner_name}")
             c1, c2, c3, c4 = st.columns(4)
             
-            # Global listing-level expenses
-            global_exp = sum(e.get('amount', 0) for e in exp_list if e.get('listingId') in assigned_ids)
-            total_exp = df['Expenses'].sum() + global_exp
+            listing_exp = sum(e.get('amount', 0) for e in exp_list if e.get('listingId') in assigned_ids)
+            total_all_exp = df['Expenses'].sum() + listing_exp
 
-            c1.metric("Gross Accomm.", f"${df['Accommodation'].sum():,.2f}")
-            c2.metric("Total Mgmt Fees", f"-${df['Management Fee'].sum():,.2f}")
-            c3.metric("Total Expenses", f"-${total_exp:,.2f}")
+            c1.metric("Gross Revenue", f"${df['Accommodation'].sum():,.2f}")
+            c2.metric("Total Management", f"-${df['Management Fee'].sum():,.2f}")
+            c3.metric("Total Expenses/Invoices", f"-${total_all_exp:,.2f}")
             
             with c4:
                 if is_eran:
-                    to_draft = df['Management Fee'].sum() + df['Cleaning Fee'].sum() + total_exp + df['Web Fee'].sum()
-                    st.metric("TOTAL TO DRAFT", f"${to_draft:,.2f}")
+                    # Eran Draft Logic
+                    total_to_draft = df['Management Fee'].sum() + df['Cleaning Fee'].sum() + total_all_exp + df['Web Fee'].sum()
+                    st.metric("TOTAL TO DRAFT", f"${total_to_draft:,.2f}", delta_color="inverse")
                 else:
-                    st.metric("NET PAYOUT", f"${(df['Net Income'].sum() - df['Cleaning Fee'].sum() - global_exp):,.2f}")
+                    # Standard Payout Logic
+                    final_pay = df['Net Income'].sum() - df['Cleaning Fee'].sum() - listing_exp
+                    st.metric("NET PAYOUT", f"${final_pay:,.2f}")
 
-            # --- DETAILED TABLE (FOR REVIEW) ---
+            # --- 4. DETAILED BREAKDOWN (PAGE 2) ---
             st.divider()
-            st.header("📝 Detailed Reservation Breakdown")
-            st.dataframe(df, use_container_width=True)
+            st.header("📝 Detailed Reservation Review")
+            # Show the specific breakdown for each property
+            st.dataframe(df[["Property", "Accommodation", "Management Fee", "Cleaning Fee", "Expenses", "Net Income"]], use_container_width=True)
             
-            if global_exp > 0:
-                st.subheader("🛠️ Property Invoices (Non-Reservation)")
+            if listing_exp > 0:
+                st.subheader("🛠️ External Property Invoices")
                 inv_data = [{"Date": e.get('date'), "Property": e.get('listing', {}).get('title'), "Description": e.get('description'), "Amount": e.get('amount')} for e in exp_list if e.get('listingId') in assigned_ids]
                 st.table(inv_data)
 
-            # --- CSV EXPORT (FOR PDF) ---
+            # Export Button
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Statement Data", data=csv, file_name=f"{selected_owner_name}_report.csv", mime='text/csv')
+            st.download_button("📥 Download Statement (Save as PDF)", data=csv, file_name=f"{selected_owner_name}_Statement.csv", mime='text/csv')
         else:
-            st.warning("No data found for this owner in this month.")
+            st.warning("No reservations found for this month.")
 else:
-    st.error("Connection error. Please check your API keys.")
+    st.error("API Error: Check connection and Guesty settings.")
