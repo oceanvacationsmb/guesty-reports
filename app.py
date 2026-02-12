@@ -82,7 +82,7 @@ with st.sidebar:
             st.rerun()
 
 # --- 4. CALCULATIONS ---
-token = get_guest_token(c_id, c_secret)
+token = get_guesty_token(c_id, c_secret)
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
 rows = []
@@ -138,41 +138,32 @@ for r in source_data:
         "Invoice": f"https://app.guesty.com/reservations/{res_id}"
     }
     
-    # CORRECTED CALCULATION
+    # FIXED CALCULATION LOGIC
     if conf['type'] == "Draft":
-        # Draft Amount = Commission + Cleaning + Expenses
-        row["Net Payout"] = (comm + clean + exp)
+        row["Net Payout"] = (comm + clean + exp)  # PMC + Cleaning + Expenses
     else:
-        # Payout Amount = Fare - Commission - Expenses
-        row["Net Payout"] = (fare - comm - exp)
+        row["Net Payout"] = (fare - comm - exp)   # Fare - PMC - Expenses
         
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-# --- 6. METRICS ---
+# --- 6. METRICS & TABLE ---
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"${t_exp:,.2f}")
+
 with c4:
-    if conf['type'] == "Draft":
-        total_val = (t_comm + t_cln + t_exp)
-        st.metric("TOTAL TO DRAFT", f"${total_val:,.2f}")
-    else:
-        total_val = (t_fare - t_comm - t_exp)
-        st.metric("NET PAYOUT", f"${total_val:,.2f}")
+    # Metric also reflects the formula change
+    total_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
+    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
-# --- 7. FORMATTED TABLE ---
-# Determine order based on style
+# Column order and numeric formatting (right-aligned by default for NumberColumn)
 order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
-
-config = {
-    col: st.column_config.NumberColumn(format="$%,.2f") 
-    for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]
-}
+config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
