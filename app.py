@@ -54,25 +54,6 @@ with st.sidebar:
     else:
         start_date, end_date = date(today.year, 1, 1), today
 
-    st.divider()
-    st.header("⚙️ Settings")
-    with st.expander("Manage Owners"):
-        edit_list = list(st.session_state.owner_db.keys())
-        target_owner = st.selectbox("Edit/Delete", ["+ Add New"] + edit_list)
-        name_input = st.text_input("Owner Name", value="" if target_owner == "+ Add New" else target_owner).upper().strip()
-        current_pct = st.session_state.owner_db.get(target_owner, {"pct": 12.0})["pct"]
-        current_type = st.session_state.owner_db.get(target_owner, {"type": "Draft"})["type"]
-        upd_pct = st.number_input("Commission %", 0.0, 100.0, float(current_pct))
-        upd_type = st.selectbox("Settlement Style", ["Draft", "Payout"], index=0 if current_type == "Draft" else 1)
-        
-        c_save, c_del = st.columns(2)
-        if c_save.button("💾 Save"):
-            st.session_state.owner_db[name_input] = {"pct": upd_pct, "type": upd_type}
-            st.rerun()
-        if target_owner != "+ Add New" and c_del.button("🗑️ Delete", type="primary"):
-            del st.session_state.owner_db[target_owner]
-            st.rerun()
-
 # --- 4. CALCULATIONS ---
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
@@ -111,11 +92,12 @@ for r in source_data:
         "Invoice": f"https://app.guesty.com/reservations/{r['ID']}"
     }
     
-    # Net Payout Logic (Always Gross - PMC - Clean - Exp for Payout)
+    # NEW FORMULA FIX:
     if conf['type'] == "Draft":
         row["Net Payout"] = (comm + clean + exp)
     else:
-        row["Net Payout"] = (fare - comm - clean - exp)
+        # Net Payout = Accommodation - Commission - Expenses
+        row["Net Payout"] = (fare - comm - exp)
         
     rows.append(row)
 
@@ -129,17 +111,20 @@ c3.metric("Cleaning Total", f"${t_cln:,.2f}")
 c4.metric("Total Expenses", f"${t_exp:,.2f}")
 
 with c5:
-    final_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_cln - t_exp)
-    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${final_val:,.2f}")
+    if conf['type'] == "Draft":
+        final_val = (t_comm + t_cln + t_exp)
+        st.metric("TOTAL TO DRAFT", f"${final_val:,.2f}")
+    else:
+        # Summary matches table formula: Total Fare - Total Comm - Total Exp
+        final_val = (t_fare - t_comm - t_exp)
+        st.metric("NET PAYOUT", f"${final_val:,.2f}")
 
 st.divider()
 
 # --- 7. TABLE (Dynamic Visibility) ---
 if conf['type'] == "Payout":
-    # Hide Cleaning for Payout owners
     order = ["ID", "Check-in/Out", "Accommodation", "Commission", "Expenses", "Invoice", "Net Payout"]
 else:
-    # Keep Cleaning for Draft owners
     order = ["ID", "Check-in/Out", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
 
 config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
