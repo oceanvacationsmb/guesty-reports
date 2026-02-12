@@ -21,12 +21,11 @@ def get_guesty_token():
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     try:
-        # Prevent rapid-fire refreshes that cause 429 errors
-        time.sleep(1) 
+        # Prevent rapid-fire refreshes
         r = requests.post(url, data=payload, headers=headers, timeout=15)
         
         if r.status_code == 429:
-            st.error("Guesty Rate Limit Hit: Please wait 60 seconds and refresh.")
+            st.error("Guesty Rate Limit Hit: Please wait 60 seconds.")
             return None
             
         r.raise_for_status()
@@ -74,6 +73,11 @@ with st.sidebar:
     st.header("Settlement Period")
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     y = st.number_input("Year", value=2026)
+    
+    # Refresh Button to control API hits
+    if st.button("🔄 Refresh Data from Guesty"):
+        st.cache_data.clear()
+        st.rerun()
 
 owners_list, res_list, exp_list = fetch_master_data(m, y)
 
@@ -93,10 +97,9 @@ if owners_list:
                 mgmt = money.get('commission', 0)
                 cln = money.get('cleaningFee', 0)
                 
-                # Check for reservation-level manual expenses
+                # Manual reservation-level expenses
                 res_exp = sum(c.get('amount', 0) for c in money.get('extraCharges', []) if "expense" in str(c.get('description', '')).lower())
                 
-                # Logic for Eran Web Fee (1% of accommodation)
                 is_eran = "ERAN" in selected_owner_name.upper()
                 src = res.get('source', '').lower()
                 web_f = (acc * 0.01) if (is_eran and "engine" in src) else 0
@@ -116,7 +119,7 @@ if owners_list:
             st.header(f"Financial Summary: {selected_owner_name}")
             c1, c2, c3, c4 = st.columns(4)
             
-            # Sum of external property invoices
+            # Listing-level property invoices
             listing_exp = sum(e.get('amount', 0) for e in exp_list if e.get('listingId') in assigned_ids)
             total_all_exp = df['Expenses'].sum() + listing_exp
 
@@ -126,8 +129,8 @@ if owners_list:
             
             with c4:
                 if is_eran:
-                    total_to_draft = df['Management Fee'].sum() + df['Cleaning Fee'].sum() + total_all_exp + (df['Accommodation'].sum() * 0.01)
-                    st.metric("TOTAL TO DRAFT", f"${total_to_draft:,.2f}")
+                    total_draft = df['Management Fee'].sum() + df['Cleaning Fee'].sum() + total_all_exp + (df['Accommodation'].sum() * 0.01)
+                    st.metric("TOTAL TO DRAFT", f"${total_draft:,.2f}")
                 else:
                     final_pay = df['Net Income'].sum() - df['Cleaning Fee'].sum() - listing_exp
                     st.metric("NET PAYOUT", f"${final_pay:,.2f}")
@@ -141,4 +144,4 @@ if owners_list:
         else:
             st.warning("No confirmed reservations found for this period.")
 else:
-    st.info("Connecting to Guesty... please wait.")
+    st.info("Click the 'Refresh Data' button in the sidebar to load information.")
