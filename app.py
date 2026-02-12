@@ -52,55 +52,73 @@ conf = st.session_state.owner_db[active_owner]
 raw_res = get_mock_reservations()
 rows = []
 
+# Calculate totals first for the summary row
+total_f = 0
+total_c = 0
+total_e = 0
+total_cln = 0
+
 for res in raw_res:
     fare = res['Fare']
     pct = conf['pct']
     comm_amt = fare * (pct / 100)
     
-    # Core Data with formatting for the table display
+    total_f += fare
+    total_c += comm_amt
+    total_e += res['Exp']
+    total_cln += res['Clean']
+    
+    # Format individual rows with $ and ,
     row = {
         "Reservation ID": res['ID'],
         "Dates (In/Out)": res['Dates'],
-        "Accommodation": f"{fare:,.2f}",
+        "Accommodation": f"${fare:,.2d}",
         "PMC %": f"{pct:,.1f}%",
-        "PMC Commission": f"{comm_amt:,.2f}",
-        "Expenses": f"{res['Exp']:,.2f}"
+        "PMC Commission": f"${comm_amt:,.2f}",
+        "Expenses": f"${res['Exp']:,.2f}"
     }
     
     if conf['type'] == "Draft":
-        row["Cleaning Fee"] = f"{res['Clean']:,.2f}"
+        row["Cleaning Fee"] = f"${res['Clean']:,.2f}"
     
     rows.append(row)
 
+# Add a "TOTAL" row at the end
+total_row = {
+    "Reservation ID": "TOTAL",
+    "Dates (In/Out)": "-",
+    "Accommodation": f"${total_f:,.2f}",
+    "PMC %": "-",
+    "PMC Commission": f"${total_c:,.2f}",
+    "Expenses": f"${total_e:,.2f}"
+}
+if conf['type'] == "Draft":
+    total_row["Cleaning Fee"] = f"${total_cln:,.2f}"
+
+rows.append(total_row)
 df_display = pd.DataFrame(rows)
 
 # --- 5. RENDER DISPLAY ---
 st.header(f"Settlement Report: {active_owner}")
 st.subheader(f"Type: {conf['type']} | Commission: {conf['pct']}%")
 
-# Metrics Summary (Calculating from raw numbers for accuracy)
+# Metrics Summary
 c1, c2, c3, c4 = st.columns(4)
-total_fare = sum(r['Fare'] for r in raw_res)
-total_comm = sum(r['Fare'] * (conf['pct'] / 100) for r in raw_res)
-total_exp = sum(r['Exp'] for r in raw_res)
-
-c1.metric("Gross Revenue", f"${total_fare:,.2f}")
-c2.metric("Total Commission", f"${total_comm:,.2f}")
-c3.metric("Total Expenses", f"${total_exp:,.2f}")
+c1.metric("Gross Revenue", f"${total_f:,.2f}")
+c2.metric("Total Commission", f"${total_c:,.2f}")
+c3.metric("Total Expenses", f"${total_e:,.2f}")
 
 with c4:
     if conf['type'] == "Draft":
-        total_clean = sum(r['Clean'] for r in raw_res)
-        total_draft = total_comm + total_clean + total_exp
+        total_draft = total_c + total_cln + total_e
         st.metric("TOTAL TO DRAFT", f"${total_draft:,.2f}")
     else:
-        net_payout = total_fare - total_comm - total_exp
+        net_payout = total_f - total_c - total_e
         st.metric("NET PAYOUT", f"${net_payout:,.2f}")
 
 st.divider()
-# Use st.table or st.dataframe for a clean look
 st.dataframe(df_display, use_container_width=True)
 
-# Export (Note: CSVs usually keep raw numbers, but we'll export the formatted version)
+# Export
 csv = df_display.to_csv(index=False).encode('utf-8')
 st.download_button(f"📥 Export {active_owner} CSV", data=csv, file_name=f"{active_owner}.csv")
