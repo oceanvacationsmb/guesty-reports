@@ -3,12 +3,23 @@ import pandas as pd
 import requests
 from datetime import datetime, date, timedelta
 
-# --- 1. DATABASE & API CACHE ---
+# --- 1. DATABASE & INITIALIZATION ---
 if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {
         "ERAN": {"pct": 12.0, "type": "Draft"},
         "SMITH": {"pct": 15.0, "type": "Payout"},
     }
+
+@st.cache_data(ttl=86400)
+def get_guesty_token(cid, csec):
+    url = "https://open-api.guesty.com/oauth2/token"
+    payload = {"grant_type": "client_credentials", "scope": "open-api", 
+               "client_id": cid.strip(), "client_secret": csec.strip()}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    try:
+        res = requests.post(url, data=payload, headers=headers)
+        return res.json().get("access_token") if res.status_code == 200 else None
+    except: return None
 
 # --- 2. MIMIC RESERVATIONS ---
 def get_mimic_reservations():
@@ -18,7 +29,7 @@ def get_mimic_reservations():
         {"ID": "RES-55435", "In": date(2026, 2, 18), "Out": date(2026, 2, 22), "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10}
     ]
 
-# --- 3. SIDEBAR ---
+# --- 3. SIDEBAR (Restored API Settings) ---
 st.set_page_config(page_title="PMC Statement", layout="wide")
 
 with st.sidebar:
@@ -61,6 +72,15 @@ with st.sidebar:
             del st.session_state.owner_db[target_owner]
             st.rerun()
 
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    # RESTORED SECTION
+    with st.expander("🔌 Connection Settings"):
+        c_id = st.text_input("Client ID", value="0oaszuo22iOg2lk1P5d7")
+        c_secret = st.text_input("Client Secret", type="password")
+        if st.button("🔄 Test Connection & Reset Cache"):
+            st.cache_data.clear()
+            st.success("Cache cleared. Pulling fresh data...")
+
 # --- 4. CALCULATIONS ---
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
@@ -98,8 +118,6 @@ for r in source_data:
         "Net Payout": round(net_payout, 2)
     })
 
-df = pd.DataFrame(rows)
-
 # --- 5. CENTERED YELLOW HEADERS ---
 st.markdown(f"""
     <div style="text-align: center;">
@@ -114,36 +132,31 @@ st.markdown(f"""
     <br>
     """, unsafe_allow_html=True)
 
-# --- 6. SUMMARY METRICS (Updated Draft Amount Logic) ---
+# --- 6. SUMMARY METRICS ---
 if conf['type'] == "Payout":
     c1, c2, c4, c5 = st.columns(4)
     c1.metric("Gross Revenue", f"${t_gross:,.2f}")
     c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
     c4.metric("Total Expenses", f"${t_exp:,.2f}")
     c5.metric("NET PAYOUT", f"${t_net_payout:,.2f}")
+    order = ["ID", "Check-in/Out", "Accommodation", "Commission", "Expenses", "Invoice", "Net Payout"]
 else:
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Gross Revenue", f"${t_gross:,.2f}")
     c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
     c3.metric("Cleaning Total", f"${t_cln:,.2f}")
     c4.metric("Total Expenses", f"${t_exp:,.2f}")
-    
-    # NEW DRAFT FORMULA: Commission + Cleaning + Expenses
     t_draft_amt = t_comm + t_cln + t_exp
     c5.metric("DRAFT AMOUNT", f"${t_draft_amt:,.2f}")
+    order = ["ID", "Check-in/Out", "Gross Revenue", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
 
 st.divider()
 
 # --- 7. TABLE ---
-if conf['type'] == "Payout":
-    order = ["ID", "Check-in/Out", "Accommodation", "Commission", "Expenses", "Invoice", "Net Payout"]
-else:
-    order = ["ID", "Check-in/Out", "Gross Revenue", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
-
 config = {
     col: st.column_config.NumberColumn(format="$%.2f") 
     for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Gross Revenue"]
 }
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
-st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
+st.dataframe(pd.DataFrame(rows), use_container_width=True, column_config=config, column_order=order, hide_index=True)
