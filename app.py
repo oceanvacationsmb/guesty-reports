@@ -10,17 +10,6 @@ if 'owner_db' not in st.session_state:
         "SMITH": {"pct": 15.0, "type": "Payout"},
     }
 
-@st.cache_data(ttl=86400)
-def get_guesty_token(cid, csec):
-    url = "https://open-api.guesty.com/oauth2/token"
-    payload = {"grant_type": "client_credentials", "scope": "open-api", 
-               "client_id": cid.strip(), "client_secret": csec.strip()}
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    try:
-        res = requests.post(url, data=payload, headers=headers)
-        return res.json().get("access_token") if res.status_code == 200 else None
-    except: return None
-
 # --- 2. MIMIC RESERVATIONS ---
 def get_mimic_reservations():
     return [
@@ -100,13 +89,13 @@ for r in source_data:
     rows.append({
         "ID": r['ID'], 
         "Check-in/Out": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", 
-        "Accommodation": fare, 
         "Gross Revenue": gross_rev,
-        "Commission": comm, 
+        "Accommodation": fare, 
         "Cleaning": clean,
+        "Commission": comm, 
         "Expenses": exp, 
-        "Net Payout": net_payout,
-        "Invoice": f"https://app.guesty.com/reservations/{r['ID']}"
+        "Invoice": f"https://app.guesty.com/reservations/{r['ID']}",
+        "Net Payout": round(net_payout, 2)
     })
 
 df = pd.DataFrame(rows)
@@ -135,14 +124,17 @@ c5.metric("NET PAYOUT", f"${t_net_payout:,.2f}")
 
 st.divider()
 
-# --- 7. TABLE (Gross Revenue moved to Column #3) ---
+# --- 7. TABLE ---
 if conf['type'] == "Payout":
     order = ["ID", "Check-in/Out", "Accommodation", "Commission", "Expenses", "Invoice", "Net Payout"]
 else:
-    # Gross Revenue is now at index 2 (Column 3)
     order = ["ID", "Check-in/Out", "Gross Revenue", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
 
-config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Gross Revenue"]}
+# Explicitly forcing 2 decimal places in display formatting
+config = {
+    col: st.column_config.NumberColumn(format="$%.2f") 
+    for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Gross Revenue"]
+}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
