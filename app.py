@@ -22,7 +22,7 @@ def get_mimic_data(owner):
 # --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("📂 NAVIGATION")
-    # Updated: OWNER STATEMENTS -> STATEMENTS
+    # UPDATED: Changed from "OWNER STATEMENTS" to "STATEMENTS"
     mode = st.radio("SELECT REPORT TYPE", ["STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
     
     st.divider()
@@ -49,6 +49,7 @@ with st.sidebar:
         start_date, end_date = date(today.year, 1, 1), today
 
     st.divider()
+    # Matches screenshot: Expanders for Management and API
     with st.expander("👤 OWNER MANAGEMENT", expanded=False):
         target = st.selectbox("EDIT/DELETE", ["+ ADD NEW"] + list(st.session_state.owner_db.keys()))
         curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "DRAFT"})
@@ -61,6 +62,7 @@ with st.sidebar:
 
     with st.expander("🔌 API CONNECTION", expanded=True):
         st.text_input("CLIENT ID", value="0oaszuo22iOg...", type="password")
+        # SAVE & RUN button styled to match red/orange action color
         if st.button("🔄 SAVE & RUN", type="primary", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
