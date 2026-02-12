@@ -19,7 +19,7 @@ def get_mimic_data(owner):
         ]
     return [{"ID": "RES-301", "Prop": "Mountain Lodge", "Addr": "55 Peak Road", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
 
-# --- 2. SIDEBAR ---
+# --- 2. SIDEBAR (STABLE) ---
 with st.sidebar:
     st.header("📂 Navigation")
     mode = st.radio("Select Report Type", ["Owner Statements", "Tax Report", "PMC REPORT"], index=0)
@@ -32,7 +32,6 @@ with st.sidebar:
     st.header("📅 Select Period")
     report_type = st.selectbox("Context", ["By Month", "Full Year", "YTD", "Between Dates"], index=0)
     
-    # Date Selection Logic (Kept Permanent)
     today = date.today()
     if report_type == "By Month":
         c1, c2 = st.columns(2)
@@ -64,7 +63,7 @@ with st.sidebar:
         if st.button("🔄 Save & Run", type="primary", use_container_width=True):
             st.cache_data.clear(); st.rerun()
 
-# --- 3. GLOBAL CALCULATION ENGINE ---
+# --- 3. CALCULATION ENGINE ---
 all_owners_data = []
 total_ov2 = 0
 for name, settings in st.session_state.owner_db.items():
@@ -76,16 +75,14 @@ for name, settings in st.session_state.owner_db.items():
         o_cln += c; o_exp += e; o_fare += f
     
     # Financial Formulas
-    # Gross Payout = Fare + Cleaning (for Draft accounts)
-    gross_payout = o_fare + (o_cln if settings['type'] == "Draft" else 0)
-    # Net Revenue = Fare - Comm - Exp (minus cleaning if Draft)
-    net_revenue = o_fare - (o_cln if settings['type'] == "Draft" else 0) - o_comm - o_exp
-    # Payment Actions
-    draft_total = (o_comm + o_cln + o_exp) if settings['type'] == "Draft" else 0
-    ach_total = net_revenue if settings['type'] == "Payout" else 0
+    is_draft = settings['type'] == "Draft"
+    top_revenue = (o_fare + o_cln) if is_draft else o_fare # Acc only for Payout
+    net_revenue = o_fare - (o_cln if is_draft else 0) - o_comm - o_exp
+    draft_total = (o_comm + o_cln + o_exp) if is_draft else 0
+    ach_total = net_revenue if not is_draft else 0
     
     all_owners_data.append({
-        "Owner": name, "Type": settings['type'], "Gross": gross_payout,
+        "Owner": name, "Type": settings['type'], "Revenue": top_revenue,
         "Comm": o_comm, "Exp": o_exp, "Cln": o_cln, "Net": net_revenue,
         "Draft": draft_total, "ACH": ach_total
     })
@@ -95,22 +92,23 @@ for name, settings in st.session_state.owner_db.items():
 if mode == "Owner Statements":
     st.markdown(f"<div style='text-align: center;'><h1>Owner Statement</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} to {end_date}</p></div>", unsafe_allow_html=True)
     
-    # Summary Table Metrics (RESTORED EXPENSES)
     s = next(item for item in all_owners_data if item["Owner"] == active_owner)
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Gross Payout", f"${s['Gross']:,.2f}")
+    
+    # DYNAMIC METRIC LABELS
+    rev_label = "Gross Payout" if conf['type'] == "Draft" else "Acc (Accommodation)"
+    m1.metric(rev_label, f"${s['Revenue']:,.2f}")
     m2.metric("Total Comm", f"${s['Comm']:,.2f}")
-    m3.metric("Total Expenses", f"${s['Exp']:,.2f}") # <--- RESTORED
+    m3.metric("Total Expenses", f"${s['Exp']:,.2f}")
     m4.metric("Net Revenue", f"${s['Net']:,.2f}")
     
     if conf['type'] == "Draft":
-        m5.metric("🏦 DRAFT FROM OWNER", f"${s['Draft']:,.2f}", delta="Action Required", delta_color="inverse")
+        m5.metric("🏦 DRAFT FROM OWNER", f"${s['Draft']:,.2f}", delta="Comm+Cln+Exp", delta_color="inverse")
     else:
-        m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}", delta="Payout Due")
+        m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}", delta="Net Revenue")
 
     st.divider()
 
-    # Property Tables (RESTORED LINKS)
     df_p = pd.DataFrame(get_mimic_data(active_owner))
     for addr in df_p["Addr"].unique():
         sub = df_p[df_p["Addr"] == addr]
@@ -120,22 +118,21 @@ if mode == "Owner Statements":
         for _, r in sub.iterrows():
             f, c, e = r['Fare'], r['Cln'], r['Exp']
             cm = round(f * (conf['pct'] / 100), 2)
-            gp = f + c if conf['type'] == "Draft" else f
+            # Table Logic: Gross Payout for Draft, Acc for Payout
+            top_line = (f + c) if conf['type'] == "Draft" else f
             nr = f - (c if conf['type'] == "Draft" else 0) - cm - e
-            rows.append({
-                "ID": r['ID'], "Dates": f"{r['In'].strftime('%m/%d')}", "Gross Payout": gp,
+            
+            row = {
+                "ID": r['ID'], "Dates": f"{r['In'].strftime('%m/%d')}",
+                rev_label: top_line, # Dynamic Header
                 "Fare": f, "Cleaning": c, "Comm": cm, "Exp": e,
                 "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None,
                 "Net Revenue": nr
-            })
+            }
+            rows.append(row)
         
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={
-            "Gross Payout": st.column_config.NumberColumn(format="$%.2f"),
-            "Fare": st.column_config.NumberColumn(format="$%.2f"),
-            "Cleaning": st.column_config.NumberColumn(format="$%.2f"),
-            "Comm": st.column_config.NumberColumn(format="$%.2f"),
-            "Exp": st.column_config.NumberColumn(format="$%.2f"),
-            "Net Revenue": st.column_config.NumberColumn(format="$%.2f"),
+            rev_label: st.column_config.NumberColumn(format="$%.2f"),
             "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
         })
 
