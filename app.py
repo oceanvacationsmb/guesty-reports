@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import calendar
 import json
+import time
 
 # --- 1. GUESTY API CONNECTION ---
 @st.cache_data(ttl=3600)
@@ -20,7 +21,14 @@ def get_guesty_token():
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     try:
-        r = requests.post(url, data=payload, headers=headers, timeout=10)
+        # Added a tiny sleep to prevent hitting rate limits during refreshes
+        time.sleep(1) 
+        r = requests.post(url, data=payload, headers=headers, timeout=15)
+        
+        if r.status_code == 429:
+            st.error("Guesty Rate Limit Hit: Please wait 60 seconds and refresh.")
+            return None
+            
         r.raise_for_status()
         return r.json().get("access_token")
     except Exception as e:
@@ -38,7 +46,7 @@ def fetch_master_data(month, year):
     
     try:
         # Get Owners
-        owners_res = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=10)
+        owners_res = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=15)
         owners = owners_res.json().get('results', [])
         
         # Get Reservations
@@ -48,11 +56,11 @@ def fetch_master_data(month, year):
             {"field": "status", "operator": "$eq", "value": "confirmed"}
         ])
         res_url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters={res_filter}"
-        reservations = requests.get(res_url, headers=headers, timeout=10).json().get('results', [])
+        reservations = requests.get(res_url, headers=headers, timeout=15).json().get('results', [])
         
         # Get Listing Expenses
         exp_url = "https://open-api.guesty.com/v1/business-models-api/transactions/expenses-by-listing"
-        expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}, timeout=10).json().get("results", [])
+        expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}, timeout=15).json().get("results", [])
         
         return owners, reservations, expenses
     except Exception as e:
@@ -67,7 +75,7 @@ with st.sidebar:
     st.header("Settlement Period")
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     y = st.number_input("Year", value=2026)
-    st.info("All data is pulled from Guesty financials.")
+    st.info("Data is pulled directly from Guesty.")
 
 owners_list, res_list, exp_list = fetch_master_data(m, y)
 
@@ -87,10 +95,10 @@ if owners_list:
                 mgmt = money.get('commission', 0)
                 cln = money.get('cleaningFee', 0)
                 
-                # Res-level expenses
+                # Check for res-level expenses
                 res_exp = sum(c.get('amount', 0) for c in money.get('extraCharges', []) if "expense" in str(c.get('description', '')).lower())
                 
-                # Eran Web Fee logic
+                # Fee Logic
                 is_eran = "ERAN" in selected_owner_name.upper()
                 src = res.get('source', '').lower()
                 web_f = (acc * 0.01) if (is_eran and "engine" in src) else 0
@@ -110,7 +118,6 @@ if owners_list:
             st.header(f"Financial Summary: {selected_owner_name}")
             c1, c2, c3, c4 = st.columns(4)
             
-            # Listing-level expenses
             listing_exp = sum(e.get('amount', 0) for e in exp_list if e.get('listingId') in assigned_ids)
             total_all_exp = df['Expenses'].sum() + listing_exp
 
@@ -131,8 +138,8 @@ if owners_list:
             st.dataframe(df, use_container_width=True)
             
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Data", data=csv, file_name=f"{selected_owner_name}.csv", mime='text/csv')
+            st.download_button("📥 Download CSV", data=csv, file_name=f"{selected_owner_name}.csv", mime='text/csv')
         else:
-            st.warning("No reservations found for this period.")
+            st.warning("No confirmed reservations found for this period.")
 else:
-    st.warning("Waiting for connection... If this persists, please check your API keys.")
+    st.info("Connecting to Guesty... please wait.")
