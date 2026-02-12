@@ -71,7 +71,7 @@ for res in raw_res:
     t_cln += clean
     
     row = {
-        "Reservation ID": res['ID'], 
+        "MOTEK": res['ID'], 
         "Date": res['Dates'].strftime("%b %d, %y"), 
         "Accommodation": float(fare), 
         "Commission": float(comm), 
