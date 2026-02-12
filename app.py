@@ -82,7 +82,7 @@ with st.sidebar:
             st.rerun()
 
 # --- 4. CALCULATIONS ---
-token = get_guesty_token(c_id, c_secret)
+token = get_guest_token(c_id, c_secret)
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
 rows = []
@@ -128,30 +128,47 @@ for r in source_data:
     comm = round(fare * (owner_pct / 100), 2)
     t_fare, t_comm, t_cln, t_exp = t_fare + fare, t_comm + comm, t_cln + clean, t_exp + exp
 
-    row = {"ID": res_id, "Check-in/Out": date_display, "Accommodation": fare, "Commission": comm, "Expenses": exp, "Invoice": f"https://app.guesty.com/reservations/{res_id}"}
+    row = {
+        "ID": res_id, 
+        "Check-in/Out": date_display, 
+        "Accommodation": fare, 
+        "Commission": comm, 
+        "Cleaning": clean,
+        "Expenses": exp, 
+        "Invoice": f"https://app.guesty.com/reservations/{res_id}"
+    }
+    
+    # CORRECTED CALCULATION
     if conf['type'] == "Draft":
-        row["Net Payout"], row["Cleaning"] = (fare + clean - exp), clean
+        # Draft Amount = Commission + Cleaning + Expenses
+        row["Net Payout"] = (comm + clean + exp)
     else:
+        # Payout Amount = Fare - Commission - Expenses
         row["Net Payout"] = (fare - comm - exp)
+        
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-# --- 6. METRICS & TABLE ---
+# --- 6. METRICS ---
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"${t_exp:,.2f}")
 with c4:
-    total_val = (t_fare + t_cln - t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
-    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
+    if conf['type'] == "Draft":
+        total_val = (t_comm + t_cln + t_exp)
+        st.metric("TOTAL TO DRAFT", f"${total_val:,.2f}")
+    else:
+        total_val = (t_fare - t_comm - t_exp)
+        st.metric("NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
 # --- 7. FORMATTED TABLE ---
-order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"] if conf['type'] == "Draft" else ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"]
+# Determine order based on style
+order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
 
-# NumberColumn right-aligns by default in Streamlit
 config = {
     col: st.column_config.NumberColumn(format="$%,.2f") 
     for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]
