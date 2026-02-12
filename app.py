@@ -114,7 +114,7 @@ st.markdown(f"""
     <br>
     """, unsafe_allow_html=True)
 
-# --- 6. SUMMARY METRICS (Conditional Card Logic) ---
+# --- 6. SUMMARY METRICS (Updated Draft Amount Logic) ---
 if conf['type'] == "Payout":
     c1, c2, c4, c5 = st.columns(4)
     c1.metric("Gross Revenue", f"${t_gross:,.2f}")
@@ -127,7 +127,10 @@ else:
     c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
     c3.metric("Cleaning Total", f"${t_cln:,.2f}")
     c4.metric("Total Expenses", f"${t_exp:,.2f}")
-    c5.metric("NET PAYOUT", f"${t_net_payout:,.2f}")
+    
+    # NEW DRAFT FORMULA: Commission + Cleaning + Expenses
+    t_draft_amt = t_comm + t_cln + t_exp
+    c5.metric("DRAFT AMOUNT", f"${t_draft_amt:,.2f}")
 
 st.divider()
 
