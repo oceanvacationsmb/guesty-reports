@@ -7,36 +7,43 @@ import json
 import time
 
 # --- 1. GUESTY API CONNECTION ---
-# Increased TTL to 1 hour to prevent constant API hits
 @st.cache_data(ttl=3600)
 def get_guesty_token():
     url = "https://open-api.guesty.com/oauth2/token"
+    
+    # Validation: Check if secrets exist
     if "CLIENT_ID" not in st.secrets or "CLIENT_SECRET" not in st.secrets:
-        st.error("Missing API Credentials in Streamlit Secrets!")
+        st.error("❌ ERROR: Keys not found in Streamlit Secrets.")
         return None
         
+    cid = st.secrets["CLIENT_ID"].strip()
+    csec = st.secrets["CLIENT_SECRET"].strip()
+
     payload = {
         "grant_type": "client_credentials",
-        "client_id": st.secrets["CLIENT_ID"].strip(),
-        "client_secret": st.secrets["CLIENT_SECRET"].strip()
+        "client_id": cid,
+        "client_secret": csec
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    
     try:
-        # Extra safety pause before the request
-        time.sleep(2) 
-        r = requests.post(url, data=payload, headers=headers, timeout=20)
+        r = requests.post(url, data=payload, headers=headers, timeout=15)
         
-        if r.status_code == 429:
-            st.warning("Guesty is still cooling down. Please wait 2-3 minutes.")
+        if r.status_code == 401:
+            st.error("❌ 401 UNAUTHORIZED: Your Client ID or Secret is incorrect. Please double-check them in Guesty and Streamlit Secrets.")
+            return None
+        elif r.status_code == 429:
+            st.warning("⚠️ 429 RATE LIMIT: Guesty is busy. Waiting 10 seconds before next attempt...")
+            time.sleep(10)
             return None
             
         r.raise_for_status()
         return r.json().get("access_token")
     except Exception as e:
-        st.error(f"Connection Error: {str(e)}")
+        st.error(f"❌ CONNECTION ERROR: {str(e)}")
         return None
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=600)
 def fetch_master_data(month, year):
     token = get_guesty_token()
     if not token: return None, None, None
@@ -46,24 +53,23 @@ def fetch_master_data(month, year):
     end = f"{year}-{month:02d}-{calendar.monthrange(year, month)[1]}"
     
     try:
-        # Get Owners
-        owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=20).json().get('results', [])
+        # Fetch data points
+        owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=15).json().get('results', [])
         
-        # Get Reservations
         res_filter = json.dumps([
             {"field": "checkInDateLocalized", "operator": "$gte", "value": start},
             {"field": "checkInDateLocalized", "operator": "$lte", "value": end},
             {"field": "status", "operator": "$eq", "value": "confirmed"}
         ])
         res_url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters={res_filter}"
-        reservations = requests.get(res_url, headers=headers, timeout=20).json().get('results', [])
+        reservations = requests.get(res_url, headers=headers, timeout=15).json().get('results', [])
         
-        # Get Listing Expenses
         exp_url = "https://open-api.guesty.com/v1/business-models-api/transactions/expenses-by-listing"
-        expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}, timeout=20).json().get("results", [])
+        expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}, timeout=15).json().get("results", [])
         
         return owners, reservations, expenses
     except Exception as e:
+        st.error(f"❌ DATA FETCH ERROR: {str(e)}")
         return None, None, None
 
 # --- 2. THE DASHBOARD INTERFACE ---
@@ -75,14 +81,14 @@ with st.sidebar:
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     y = st.number_input("Year", value=2026)
     
-    # Manual Refresh Button
-    if st.button("🔄 Force Update from Guesty"):
+    if st.button("🔄 Force Refresh Data"):
         st.cache_data.clear()
         st.rerun()
 
 owners_list, res_list, exp_list = fetch_master_data(m, y)
 
 if owners_list:
+    st.success("✅ Connected to Guesty successfully!")
     owner_map = {f"{o.get('firstName', '')} {o.get('lastName', '')}".strip(): o for o in owners_list}
     selected_owner_name = st.selectbox("Select Owner", [""] + sorted(owner_map.keys()))
     
@@ -101,8 +107,7 @@ if owners_list:
                 res_exp = sum(c.get('amount', 0) for c in money.get('extraCharges', []) if "expense" in str(c.get('description', '')).lower())
                 
                 is_eran = "ERAN" in selected_owner_name.upper()
-                src = res.get('source', '').lower()
-                web_f = (acc * 0.01) if (is_eran and "engine" in src) else 0
+                web_f = (acc * 0.01) if (is_eran and "engine" in res.get('source', '').lower()) else 0
 
                 detailed_data.append({
                     "Property": res.get('listing', {}).get('title', 'Unknown'),
@@ -143,4 +148,4 @@ if owners_list:
         else:
             st.warning("No confirmed reservations found for this period.")
 else:
-    st.info("The app is currently in a cooldown period to avoid Guesty Rate Limits. If no data appears in 2 minutes, click 'Force Update'.")
+    st.info("Awaiting connection... If you see an error above, check your Keys.")
