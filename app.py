@@ -25,7 +25,13 @@ with st.sidebar:
     st.header("📊 View Report")
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
     
-    # Settings expander for owner management
+    st.divider()
+    st.header("📅 Select Period")
+    report_type = st.selectbox("Quick Select", ["By Month", "Date Range", "Year to Date (YTD)", "Full Year"])
+    
+    today = date.today()
+    start_date, end_date = date(today.year, today.month, 1), today
+
     st.divider()
     st.header("⚙️ Settings")
     with st.expander("Manage Owners"):
@@ -65,7 +71,7 @@ for res in raw_res:
     t_cln += clean
     
     row = {
-        "Reservation ID": res['ID'], # Changed key from ID to Reservation ID
+        "ID": res['ID'], 
         "Date": res['Dates'].strftime("%b %d, %y"), 
         "Accommodation": float(fare), 
         "Commission": float(comm), 
@@ -92,14 +98,12 @@ with c4:
 
 st.divider()
 
-# Order for Draft owners
 if conf['type'] == "Draft":
-    final_order = ["Reservation ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
+    final_order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
 else:
-    final_order = ["Reservation ID", "Date", "Accommodation", "Commission", "Expenses", "Invoice"]
+    final_order = ["ID", "Date", "Accommodation", "Commission", "Expenses", "Invoice"]
 
 column_config = {
-    "Reservation ID": st.column_config.TextColumn("Reservation ID"), # Updated label
     "Net Payout": st.column_config.NumberColumn("Net Payout", format="$%.2f"),
     "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%.2f"),
     "Cleaning": st.column_config.NumberColumn("Cleaning", format="$%.2f"),
