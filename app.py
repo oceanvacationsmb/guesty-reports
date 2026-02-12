@@ -138,14 +138,11 @@ for r in source_data:
         "Invoice": f"https://app.guesty.com/reservations/{res_id}"
     }
     
-    # LOGIC UPDATE:
-    # Gross Payout (Accommodation + Cleaning)
-    gross_payout = (fare + clean)
-    
+    # Logic remains as requested previously
     if conf['type'] == "Draft":
         row["Net Payout"] = (comm + clean + exp)
     else:
-        row["Net Payout"] = gross_payout
+        row["Net Payout"] = (fare + clean)
         
     rows.append(row)
 
@@ -153,21 +150,15 @@ df = pd.DataFrame(rows)
 
 # --- 6. SUMMARY METRICS ---
 c1, c2, c3, c4, c5 = st.columns(5)
-# Calculation: Accommodation + Cleaning
-total_gross_payout = t_fare + t_cln
 
-c1.metric("Gross Payout", f"${total_gross_payout:,.2f}")
+c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
 c3.metric("Cleaning Total", f"${t_cln:,.2f}")
 c4.metric("Total Expenses", f"${t_exp:,.2f}")
 
 with c5:
-    if conf['type'] == "Draft":
-        final_val = (t_comm + t_cln + t_exp)
-        st.metric("TOTAL TO DRAFT", f"${final_val:,.2f}")
-    else:
-        final_val = total_gross_payout
-        st.metric("NET PAYOUT", f"${final_val:,.2f}")
+    final_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare + t_cln)
+    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${final_val:,.2f}")
 
 st.divider()
 
