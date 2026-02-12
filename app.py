@@ -9,13 +9,14 @@ if 'owner_db' not in st.session_state:
         "SMITH (PAYOUT)": {"pct": 15.0, "type": "Payout", "web_fee": 0.0},
     }
 
-# --- 2. GENERATE TEST RESERVATIONS ---
+# --- 2. EXPANDED TEST RESERVATIONS ---
 def get_mock_reservations():
     return [
         {"ID": "RES-55421", "Dates": "Feb 01 - Feb 05", "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0},
         {"ID": "RES-55429", "Dates": "Feb 10 - Feb 14", "Fare": 850.50, "Clean": 100.0, "Exp": 0.0},
         {"ID": "RES-55435", "Dates": "Feb 18 - Feb 22", "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10},
-        {"ID": "RES-55440", "Dates": "Feb 25 - Feb 28", "Fare": 5950.0, "Clean": 120.0, "Exp": 10.0}
+        {"ID": "RES-55440", "Dates": "Feb 25 - Feb 28", "Fare": 5950.0, "Clean": 120.0, "Exp": 10.0},
+        {"ID": "RES-55445", "Dates": "Mar 01 - Mar 04", "Fare": 1500.0, "Clean": 150.0, "Exp": 0.0}
     ]
 
 # --- 3. DASHBOARD UI ---
@@ -47,78 +48,67 @@ with st.sidebar:
             st.session_state.owner_db[name_input] = {"pct": new_pct, "type": new_type, "web_fee": 0.0}
             st.rerun()
 
-# --- 4. CALCULATION & FORMATTING LOGIC ---
+# --- 4. CALCULATION & FORMATTING ---
 conf = st.session_state.owner_db[active_owner]
 raw_res = get_mock_reservations()
 rows = []
 
-# Calculate totals first for the summary row
-total_f = 0
-total_c = 0
-total_e = 0
-total_cln = 0
+# Raw totals for math
+t_fare = t_comm = t_exp = t_cln = 0
 
 for res in raw_res:
     fare = res['Fare']
-    pct = conf['pct']
-    comm_amt = fare * (pct / 100)
+    comm = fare * (conf['pct'] / 100)
     
-    total_f += fare
-    total_c += comm_amt
-    total_e += res['Exp']
-    total_cln += res['Clean']
+    t_fare += fare
+    t_comm += comm
+    t_exp += res['Exp']
+    t_cln += res['Clean']
     
-    # Format individual rows with $ and ,
+    # Store formatted strings for the table
     row = {
         "Reservation ID": res['ID'],
         "Dates (In/Out)": res['Dates'],
-        "Accommodation": f"${fare:,.2d}",
-        "PMC %": f"{pct:,.1f}%",
-        "PMC Commission": f"${comm_amt:,.2f}",
+        "Accommodation": f"${fare:,.2f}",
+        "PMC %": f"{conf['pct']}%",
+        "PMC Commission": f"${comm:,.2f}",
         "Expenses": f"${res['Exp']:,.2f}"
     }
-    
     if conf['type'] == "Draft":
         row["Cleaning Fee"] = f"${res['Clean']:,.2f}"
-    
     rows.append(row)
 
-# Add a "TOTAL" row at the end
+# Add the Total Row
 total_row = {
     "Reservation ID": "TOTAL",
     "Dates (In/Out)": "-",
-    "Accommodation": f"${total_f:,.2f}",
+    "Accommodation": f"${t_fare:,.2f}",
     "PMC %": "-",
-    "PMC Commission": f"${total_c:,.2f}",
-    "Expenses": f"${total_e:,.2f}"
+    "PMC Commission": f"${t_comm:,.2f}",
+    "Expenses": f"${t_exp:,.2f}"
 }
 if conf['type'] == "Draft":
-    total_row["Cleaning Fee"] = f"${total_cln:,.2f}"
+    total_row["Cleaning Fee"] = f"${t_cln:,.2f}"
 
 rows.append(total_row)
 df_display = pd.DataFrame(rows)
 
 # --- 5. RENDER DISPLAY ---
 st.header(f"Settlement Report: {active_owner}")
-st.subheader(f"Type: {conf['type']} | Commission: {conf['pct']}%")
 
-# Metrics Summary
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Gross Revenue", f"${total_f:,.2f}")
-c2.metric("Total Commission", f"${total_c:,.2f}")
-c3.metric("Total Expenses", f"${total_e:,.2f}")
+c1.metric("Gross Revenue", f"${t_fare:,.2f}")
+c2.metric("Total Commission", f"${t_comm:,.2f}")
+c3.metric("Total Expenses", f"${t_exp:,.2f}")
 
 with c4:
     if conf['type'] == "Draft":
-        total_draft = total_c + total_cln + total_e
-        st.metric("TOTAL TO DRAFT", f"${total_draft:,.2f}")
+        st.metric("TOTAL TO DRAFT", f"${(t_comm + t_cln + t_exp):,.2f}")
     else:
-        net_payout = total_f - total_c - total_e
-        st.metric("NET PAYOUT", f"${net_payout:,.2f}")
+        st.metric("NET PAYOUT", f"${(t_fare - t_comm - t_exp):,.2f}")
 
 st.divider()
 st.dataframe(df_display, use_container_width=True)
 
-# Export
 csv = df_display.to_csv(index=False).encode('utf-8')
 st.download_button(f"📥 Export {active_owner} CSV", data=csv, file_name=f"{active_owner}.csv")
