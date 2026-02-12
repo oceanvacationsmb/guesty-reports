@@ -19,7 +19,7 @@ def get_mimic_data(owner):
         ]
     return [{"ID": "RES-301", "Prop": "Mountain Lodge", "Addr": "55 Peak Road", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
 
-# --- 2. SIDEBAR (STABLE) ---
+# --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("📂 Navigation")
     mode = st.radio("Select Report Type", ["Owner Statements", "Tax Report", "PMC REPORT"], index=0)
@@ -118,36 +118,39 @@ if mode == "Owner Statements":
             cm = round(f * (conf['pct'] / 100), 2)
             top_line = (f + c) if conf['type'] == "Draft" else f
             nr = f - (c if conf['type'] == "Draft" else 0) - cm - e
-            
-            # --- UPDATED DATE LOGIC ---
             stay_dates = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
             
             row = {
-                "ID": r['ID'], 
-                "Check-in/Out": stay_dates, # Combined Column
-                rev_label: top_line,
-                "PMC Comm": cm, 
-                "Expensed": e,
+                "ID": r['ID'], "Check-in/Out": stay_dates,
+                rev_label: top_line, "Cleaning": c, "PMC Comm": cm, "Expensed": e,
                 "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None,
                 "Net Revenue": nr
             }
-            if conf['type'] == "Draft":
-                row["Cleaning"] = c
-                
             rows.append(row)
         
-        cols_to_show = ["ID", "Check-in/Out", rev_label, "Cleaning", "PMC Comm", "Expensed", "Invoice", "Net Revenue"] if conf['type'] == "Draft" else ["ID", "Check-in/Out", rev_label, "PMC Comm", "Expensed", "Invoice", "Net Revenue"]
-        
+        # Apply currency formatting to all numeric columns in dataframe
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={
             rev_label: st.column_config.NumberColumn(format="$%.2f"),
-            "Check-in/Out": st.column_config.TextColumn("Check-in/Out", width="medium"),
+            "Cleaning": st.column_config.NumberColumn(format="$%.2f"),
+            "PMC Comm": st.column_config.NumberColumn(format="$%.2f"),
+            "Expensed": st.column_config.NumberColumn(format="$%.2f"),
+            "Net Revenue": st.column_config.NumberColumn(format="$%.2f"),
             "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
-        }, column_order=cols_to_show)
+        })
 
 elif mode == "PMC REPORT":
     st.title("PMC Internal Control Report")
     st.metric("TRANSFER TO OV2", f"${total_ov2:,.2f}")
-    st.dataframe(pd.DataFrame(all_owners_data)[["Owner", "Type", "Draft", "ACH", "Comm", "Exp"]], use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True, column_config={
+        "Revenue": st.column_config.NumberColumn(format="$%.2f"),
+        "Comm": st.column_config.NumberColumn(format="$%.2f"),
+        "Exp": st.column_config.NumberColumn(format="$%.2f"),
+        "Cln": st.column_config.NumberColumn(format="$%.2f"),
+        "Net": st.column_config.NumberColumn(format="$%.2f"),
+        "Draft": st.column_config.NumberColumn(format="$%.2f"),
+        "ACH": st.column_config.NumberColumn(format="$%.2f")
+    })
 
 else:
     st.title("Tax Report")
+    # Tax formatting would go here...
