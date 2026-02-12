@@ -25,13 +25,7 @@ with st.sidebar:
     st.header("📊 View Report")
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
     
-    st.divider()
-    st.header("📅 Select Period")
-    report_type = st.selectbox("Quick Select", ["By Month", "Date Range", "Year to Date (YTD)", "Full Year"])
-    
-    today = date.today()
-    start_date, end_date = date(today.year, today.month, 1), today
-
+    # Settings expander for owner management
     st.divider()
     st.header("⚙️ Settings")
     with st.expander("Manage Owners"):
@@ -39,7 +33,6 @@ with st.sidebar:
         target_owner = st.selectbox("Edit/Delete", ["+ Add New"] + edit_list)
         
         name_val = "" if target_owner == "+ Add New" else target_owner
-        # Automatic cleaning of the word "DRAFT"
         name_input = st.text_input("Owner Name", value=name_val).upper().replace("DRAFT", "").strip()
         
         current_pct = st.session_state.owner_db.get(target_owner, {"pct": 20.0})["pct"]
@@ -65,7 +58,6 @@ t_fare = t_comm = t_exp = t_cln = 0
 
 for res in raw_res:
     fare, clean = res['Fare'], res['Clean']
-    # Calculation rounding
     comm = round(fare * (owner_pct / 100), 2)
     t_fare += fare
     t_comm += comm
@@ -73,7 +65,7 @@ for res in raw_res:
     t_cln += clean
     
     row = {
-        "ID": res['ID'], 
+        "Reservation ID": res['ID'], # Changed key from ID to Reservation ID
         "Date": res['Dates'].strftime("%b %d, %y"), 
         "Accommodation": float(fare), 
         "Commission": float(comm), 
@@ -102,11 +94,12 @@ st.divider()
 
 # Order for Draft owners
 if conf['type'] == "Draft":
-    final_order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
+    final_order = ["Reservation ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
 else:
-    final_order = ["ID", "Date", "Accommodation", "Commission", "Expenses", "Invoice"]
+    final_order = ["Reservation ID", "Date", "Accommodation", "Commission", "Expenses", "Invoice"]
 
 column_config = {
+    "Reservation ID": st.column_config.TextColumn("Reservation ID"), # Updated label
     "Net Payout": st.column_config.NumberColumn("Net Payout", format="$%.2f"),
     "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%.2f"),
     "Cleaning": st.column_config.NumberColumn("Cleaning", format="$%.2f"),
