@@ -138,11 +138,12 @@ for r in source_data:
         "Invoice": f"https://app.guesty.com/reservations/{res_id}"
     }
     
-    # REVERTED LOGIC
+    # LOGIC UPDATE
     if conf['type'] == "Draft":
         row["Net Payout"] = (comm + clean + exp)
     else:
-        row["Net Payout"] = (fare + clean)
+        # Payout logic: Revenue - PMC - Clean - Exp
+        row["Net Payout"] = (fare - comm - clean - exp)
         
     rows.append(row)
 
@@ -157,12 +158,17 @@ c3.metric("Cleaning Total", f"${t_cln:,.2f}")
 c4.metric("Total Expenses", f"${t_exp:,.2f}")
 
 with c5:
-    final_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare + t_cln)
-    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${final_val:,.2f}")
+    if conf['type'] == "Draft":
+        final_val = (t_comm + t_cln + t_exp)
+        st.metric("TOTAL TO DRAFT", f"${final_val:,.2f}")
+    else:
+        # UPDATED FORMULA: Gross Revenue - Commission - Cleaning Total - Total Expenses
+        final_val = (t_fare - t_comm - t_cln - t_exp)
+        st.metric("NET PAYOUT", f"${final_val:,.2f}")
 
 st.divider()
 
-# --- 7. TABLE (Net Payout Column Restored) ---
+# --- 7. TABLE ---
 order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
 config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
