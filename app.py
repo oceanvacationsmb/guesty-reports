@@ -9,32 +9,32 @@ import time
 # --- 1. GUESTY API CONNECTION ---
 @st.cache_data(ttl=3600)
 def get_guesty_token():
+    # Attempt to fetch from secrets
+    try:
+        cid = st.secrets["CLIENT_ID"]
+        csec = st.secrets["CLIENT_SECRET"]
+    except:
+        st.error("❌ SECRETS NOT FOUND: Please go to Streamlit Cloud -> Settings -> Secrets and add CLIENT_ID and CLIENT_SECRET.")
+        return None
+
     url = "https://open-api.guesty.com/oauth2/token"
     
-    # Validation: Check if secrets exist
-    if "CLIENT_ID" not in st.secrets or "CLIENT_SECRET" not in st.secrets:
-        st.error("❌ ERROR: Keys not found in Streamlit Secrets.")
-        return None
-        
-    cid = st.secrets["CLIENT_ID"].strip()
-    csec = st.secrets["CLIENT_SECRET"].strip()
-
+    # .strip() removes accidental spaces from copy-pasting
     payload = {
         "grant_type": "client_credentials",
-        "client_id": cid,
-        "client_secret": csec
+        "client_id": cid.strip(),
+        "client_secret": csec.strip()
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     
     try:
-        r = requests.post(url, data=payload, headers=headers, timeout=15)
+        r = requests.post(url, data=payload, headers=headers, timeout=20)
         
         if r.status_code == 401:
-            st.error("❌ 401 UNAUTHORIZED: Your Client ID or Secret is incorrect. Please double-check them in Guesty and Streamlit Secrets.")
+            st.error(f"❌ 401 UNAUTHORIZED: Guesty rejected these keys. Double-check that you copied the FULL Secret and that the key is active in Guesty.")
             return None
         elif r.status_code == 429:
-            st.warning("⚠️ 429 RATE LIMIT: Guesty is busy. Waiting 10 seconds before next attempt...")
-            time.sleep(10)
+            st.warning("⚠️ 429 RATE LIMIT: Too many attempts. Waiting...")
             return None
             
         r.raise_for_status()
@@ -53,26 +53,27 @@ def fetch_master_data(month, year):
     end = f"{year}-{month:02d}-{calendar.monthrange(year, month)[1]}"
     
     try:
-        # Fetch data points
-        owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=15).json().get('results', [])
+        # Get Owners
+        owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=20).json().get('results', [])
         
+        # Get Reservations
         res_filter = json.dumps([
             {"field": "checkInDateLocalized", "operator": "$gte", "value": start},
             {"field": "checkInDateLocalized", "operator": "$lte", "value": end},
             {"field": "status", "operator": "$eq", "value": "confirmed"}
         ])
         res_url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters={res_filter}"
-        reservations = requests.get(res_url, headers=headers, timeout=15).json().get('results', [])
+        reservations = requests.get(res_url, headers=headers, timeout=20).json().get('results', [])
         
+        # Get Expenses
         exp_url = "https://open-api.guesty.com/v1/business-models-api/transactions/expenses-by-listing"
-        expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}, timeout=15).json().get("results", [])
+        expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}, timeout=20).json().get("results", [])
         
         return owners, reservations, expenses
     except Exception as e:
-        st.error(f"❌ DATA FETCH ERROR: {str(e)}")
         return None, None, None
 
-# --- 2. THE DASHBOARD INTERFACE ---
+# --- 2. THE DASHBOARD ---
 st.set_page_config(page_title="Owner Portal", layout="wide")
 st.title("🛡️ Guesty Automated Settlement Dashboard")
 
@@ -81,14 +82,14 @@ with st.sidebar:
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     y = st.number_input("Year", value=2026)
     
-    if st.button("🔄 Force Refresh Data"):
+    if st.button("🔄 Force Update Data"):
         st.cache_data.clear()
         st.rerun()
 
 owners_list, res_list, exp_list = fetch_master_data(m, y)
 
 if owners_list:
-    st.success("✅ Connected to Guesty successfully!")
+    st.success("✅ Connected!")
     owner_map = {f"{o.get('firstName', '')} {o.get('lastName', '')}".strip(): o for o in owners_list}
     selected_owner_name = st.selectbox("Select Owner", [""] + sorted(owner_map.keys()))
     
@@ -116,19 +117,19 @@ if owners_list:
                     "Management Fee": mgmt,
                     "Cleaning Fee": cln,
                     "Expenses": res_exp,
-                    "Net Income": acc - mgmt - web_f - res_exp
+                    "Net to Owner": acc - mgmt - web_f - res_exp
                 })
 
         if detailed_data:
             df = pd.DataFrame(detailed_data)
-            st.header(f"Financial Summary: {selected_owner_name}")
+            st.header(f"Summary: {selected_owner_name}")
             c1, c2, c3, c4 = st.columns(4)
             
             listing_exp = sum(e.get('amount', 0) for e in exp_list if e.get('listingId') in assigned_ids)
             total_all_exp = df['Expenses'].sum() + listing_exp
 
             c1.metric("Gross Revenue", f"${df['Accommodation'].sum():,.2f}")
-            c2.metric("Total Management", f"-${df['Management Fee'].sum():,.2f}")
+            c2.metric("Management Fees", f"-${df['Management Fee'].sum():,.2f}")
             c3.metric("Total Expenses", f"-${total_all_exp:,.2f}")
             
             with c4:
@@ -136,16 +137,17 @@ if owners_list:
                     total_draft = df['Management Fee'].sum() + df['Cleaning Fee'].sum() + total_all_exp + (df['Accommodation'].sum() * 0.01)
                     st.metric("TOTAL TO DRAFT", f"${total_draft:,.2f}")
                 else:
-                    final_pay = df['Net Income'].sum() - df['Cleaning Fee'].sum() - listing_exp
+                    final_pay = df['Net to Owner'].sum() - df['Cleaning Fee'].sum() - listing_exp
                     st.metric("NET PAYOUT", f"${final_pay:,.2f}")
 
             st.divider()
             st.header("📝 Detailed Reservation Review")
             st.dataframe(df, use_container_width=True)
             
+            # Save as CSV
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download CSV", data=csv, file_name=f"{selected_owner_name}.csv", mime='text/csv')
+            st.download_button("📥 Download Report", data=csv, file_name=f"{selected_owner_name}.csv", mime='text/csv')
         else:
-            st.warning("No confirmed reservations found for this period.")
+            st.warning("No confirmed reservations found.")
 else:
-    st.info("Awaiting connection... If you see an error above, check your Keys.")
+    st.info("Check your keys in Streamlit Secrets and click 'Force Update Data'.")
