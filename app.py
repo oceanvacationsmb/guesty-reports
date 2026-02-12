@@ -3,19 +3,10 @@ import pandas as pd
 import requests
 import time
 
-# --- 1. SESSION STATE MANAGEMENT ---
-# This prevents re-authenticating on every click
-if "access_token" not in st.session_state:
-    st.session_state.access_token = None
-if "expires_at" not in st.session_state:
-    st.session_state.expires_at = 0
-
-# --- 2. AUTHENTICATION ---
+# --- 1. CACHED AUTHENTICATION ---
+# ttl=86400 means the token is saved for 24 hours
+@st.cache_data(ttl=86400)
 def get_guesty_token(client_id, client_secret):
-    # Check if we already have a valid token in memory
-    if st.session_state.access_token and time.time() < st.session_state.expires_at:
-        return st.session_state.access_token
-
     url = "https://open-api.guesty.com/oauth2/token"
     payload = {
         "grant_type": "client_credentials",
@@ -25,44 +16,82 @@ def get_guesty_token(client_id, client_secret):
     }
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     
-    response = requests.post(url, data=payload, headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        st.session_state.access_token = data.get("access_token")
-        # Store expiration (usually 24 hours)
-        st.session_state.expires_at = time.time() + data.get("expires_in", 86400)
-        return st.session_state.access_token
-    else:
-        st.error(f"Failed to Connect: {response.status_code} - {response.text}")
+    try:
+        response = requests.post(url, data=payload, headers=headers)
+        if response.status_code == 200:
+            return response.json().get("access_token")
+        else:
+            st.error(f"Auth Error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Connection failed: {e}")
         return None
 
-# --- 3. UI SETUP ---
-st.set_page_config(page_title="Guesty Live Integration", layout="wide")
+# --- 2. DATA FETCHING ---
+def fetch_reservations(token):
+    url = "https://open-api.guesty.com/v1/reservations"
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    # Limit fields to keep the response small and fast
+    params = {
+        "limit": 50, 
+        "fields": "confirmationCode checkIn money listing.nickname"
+    }
+    
+    response = requests.get(url, headers=headers, params=params)
+    if response.status_code == 200:
+        return response.json().get("results", [])
+    return []
+
+# --- 3. UI DASHBOARD ---
+st.set_page_config(page_title="Guesty Live Portal", layout="wide")
 st.title("🔌 Guesty Live Data Integration")
 
 with st.sidebar:
     st.header("🔑 API Credentials")
-    c_id = st.text_input("Client ID", type="default")
+    # Using type="password" for the secret for security
+    c_id = st.text_input("Client ID", value="0oaszuo22iOg2lk1P5d7")
     c_secret = st.text_input("Client Secret", type="password")
     
-    if st.button("Connect to Guesty"):
-        # Clear old token to force a fresh login if requested
-        st.session_state.access_token = None 
-        token = get_guesty_token(c_id, c_secret)
-        if token:
-            st.success("Connected & Token Saved!")
+    connect_clicked = st.button("Connect to Guesty")
 
-# --- 4. DATA FETCHING ---
-if st.session_state.access_token:
-    if st.button("🔄 Sync Reservations"):
-        url = "https://open-api.guesty.com/v1/reservations"
-        headers = {"Authorization": f"Bearer {st.session_state.access_token}"}
-        # Limit the pull to avoid secondary rate limits
-        params = {"limit": 20, "fields": "confirmationCode checkIn money listing.nickname"}
+# --- 4. EXECUTION ---
+if c_id and c_secret:
+    # This only runs the heavy API call if the token isn't already cached
+    token = get_guesty_token(c_id, c_secret)
+    
+    if token:
+        st.success("✅ Connected to Guesty (Token Cached)")
         
-        res = requests.get(url, headers=headers, params=params)
-        if res.status_code == 200:
-            st.dataframe(pd.json_normalize(res.json().get("results", [])))
-        elif res.status_code == 429:
-            st.warning("⚠️ Still rate limited. Please wait 1-2 minutes before clicking again.")
+        if st.button("🔄 Sync Live Reservations"):
+            with st.spinner("Fetching latest data..."):
+                data = fetch_reservations(token)
+                
+                if data:
+                    # Flatten the 'money' and 'listing' objects for the table
+                    processed = []
+                    for r in data:
+                        m = r.get("money", {})
+                        processed.append({
+                            "Reservation ID": r.get("confirmationCode"),
+                            "Property": r.get("listing", {}).get("nickname"),
+                            "Check-In": r.get("checkIn")[:10] if r.get("checkIn") else "",
+                            "Accommodation": float(m.get("fare", 0)),
+                            "Cleaning": float(m.get("cleaningFee", 0))
+                        })
+                    
+                    df = pd.DataFrame(processed)
+                    
+                    # Display with the requested comma formatting
+                    st.dataframe(
+                        df, 
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Accommodation": st.column_config.NumberColumn(format="$%,.2f"),
+                            "Cleaning": st.column_config.NumberColumn(format="$%,.2f")
+                        }
+                    )
+                else:
+                    st.warning("No reservations found.")
+else:
+    st.info("Please enter your Client Secret to begin.")
