@@ -7,6 +7,7 @@ import json
 import time
 
 # --- 1. GUESTY API CONNECTION ---
+# Increased TTL to 1 hour to prevent constant API hits
 @st.cache_data(ttl=3600)
 def get_guesty_token():
     url = "https://open-api.guesty.com/oauth2/token"
@@ -21,20 +22,21 @@ def get_guesty_token():
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     try:
-        # Prevent rapid-fire refreshes
-        r = requests.post(url, data=payload, headers=headers, timeout=15)
+        # Extra safety pause before the request
+        time.sleep(2) 
+        r = requests.post(url, data=payload, headers=headers, timeout=20)
         
         if r.status_code == 429:
-            st.error("Guesty Rate Limit Hit: Please wait 60 seconds.")
+            st.warning("Guesty is still cooling down. Please wait 2-3 minutes.")
             return None
             
         r.raise_for_status()
         return r.json().get("access_token")
     except Exception as e:
-        st.error(f"Token Error: {str(e)}")
+        st.error(f"Connection Error: {str(e)}")
         return None
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def fetch_master_data(month, year):
     token = get_guesty_token()
     if not token: return None, None, None
@@ -45,7 +47,7 @@ def fetch_master_data(month, year):
     
     try:
         # Get Owners
-        owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=15).json().get('results', [])
+        owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=20).json().get('results', [])
         
         # Get Reservations
         res_filter = json.dumps([
@@ -54,15 +56,14 @@ def fetch_master_data(month, year):
             {"field": "status", "operator": "$eq", "value": "confirmed"}
         ])
         res_url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters={res_filter}"
-        reservations = requests.get(res_url, headers=headers, timeout=15).json().get('results', [])
+        reservations = requests.get(res_url, headers=headers, timeout=20).json().get('results', [])
         
         # Get Listing Expenses
         exp_url = "https://open-api.guesty.com/v1/business-models-api/transactions/expenses-by-listing"
-        expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}, timeout=15).json().get("results", [])
+        expenses = requests.get(exp_url, headers=headers, params={"startDate": start, "endDate": end}, timeout=20).json().get("results", [])
         
         return owners, reservations, expenses
     except Exception as e:
-        st.error(f"Data Fetch Error: {str(e)}")
         return None, None, None
 
 # --- 2. THE DASHBOARD INTERFACE ---
@@ -74,8 +75,8 @@ with st.sidebar:
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     y = st.number_input("Year", value=2026)
     
-    # Refresh Button to control API hits
-    if st.button("🔄 Refresh Data from Guesty"):
+    # Manual Refresh Button
+    if st.button("🔄 Force Update from Guesty"):
         st.cache_data.clear()
         st.rerun()
 
@@ -97,7 +98,6 @@ if owners_list:
                 mgmt = money.get('commission', 0)
                 cln = money.get('cleaningFee', 0)
                 
-                # Manual reservation-level expenses
                 res_exp = sum(c.get('amount', 0) for c in money.get('extraCharges', []) if "expense" in str(c.get('description', '')).lower())
                 
                 is_eran = "ERAN" in selected_owner_name.upper()
@@ -119,7 +119,6 @@ if owners_list:
             st.header(f"Financial Summary: {selected_owner_name}")
             c1, c2, c3, c4 = st.columns(4)
             
-            # Listing-level property invoices
             listing_exp = sum(e.get('amount', 0) for e in exp_list if e.get('listingId') in assigned_ids)
             total_all_exp = df['Expenses'].sum() + listing_exp
 
@@ -144,4 +143,4 @@ if owners_list:
         else:
             st.warning("No confirmed reservations found for this period.")
 else:
-    st.info("Click the 'Refresh Data' button in the sidebar to load information.")
+    st.info("The app is currently in a cooldown period to avoid Guesty Rate Limits. If no data appears in 2 minutes, click 'Force Update'.")
