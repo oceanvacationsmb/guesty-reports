@@ -9,7 +9,7 @@ if 'owner_db' not in st.session_state:
         "SMITH (PAYOUT)": {"pct": 15.0, "type": "Payout", "web_fee": 0.0},
     }
 
-# --- 2. TEST RESERVATIONS ---
+# --- 2. TEST DATA ---
 def get_mock_reservations():
     return [
         {"ID": "RES-55421", "Dates": "Feb 01 - Feb 05", "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0, "Invoice": "https://open-api.guesty.com/v1/receipt/55421"},
@@ -18,7 +18,7 @@ def get_mock_reservations():
     ]
 
 # --- 3. DASHBOARD UI ---
-st.set_page_config(page_title="Owner Settlement", layout="wide")
+st.set_page_config(page_title="Owner Portal", layout="wide")
 st.title("🛡️ Guesty Automated Settlement Dashboard")
 
 with st.sidebar:
@@ -35,37 +35,59 @@ with st.sidebar:
         target_owner = st.selectbox("Choose Owner to Modify", ["+ Add New"] + edit_list)
         # (Setting management logic remains the same)
 
-# --- 4. CALCULATION & REORDERING ---
+# --- 4. CALCULATIONS ---
 conf = st.session_state.owner_db[active_owner]
 raw_res = get_mock_reservations()
 rows = []
 
+# Raw totals for the "Clean Summary" cards
+t_fare = t_comm = t_exp = t_cln = 0
+
 for res in raw_res:
     fare = res['Fare']
     comm = fare * (conf['pct'] / 100)
+    t_fare += fare
+    t_comm += comm
+    t_exp += res['Exp']
+    t_cln += res['Clean']
     
-    # Build columns in requested order
     row = {
         "Reservation ID": res['ID'],
         "Dates (In/Out)": res['Dates'],
         "Accommodation": fare,
         "PMC Commission": comm
     }
-    
     if conf['type'] == "Draft":
         row["Cleaning Fee"] = res['Clean']
     
-    # Expenses must be last
     row["Expenses"] = res['Exp']
     row["Invoice Link"] = res['Invoice']
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-# --- 5. RENDER DISPLAY ---
+# --- 5. RENDER CLEAN SUMMARY REPORT ---
 st.header(f"Settlement Report: {active_owner}")
 
-# Professional Table Config: Right-aligned & 2 Decimals
+# The "Nice and Clean" Summary Cards
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Gross Revenue", f"${t_fare:,.2f}")
+c2.metric("Total Commission", f"${t_comm:,.2f}")
+c3.metric("Total Expenses", f"${t_exp:,.2f}")
+
+with c4:
+    if conf['type'] == "Draft":
+        total_val = t_comm + t_cln + t_exp
+        st.metric("TOTAL TO DRAFT", f"${total_val:,.2f}")
+    else:
+        total_val = t_fare - t_comm - t_exp
+        st.metric("NET PAYOUT", f"${total_val:,.2f}")
+
+st.divider()
+
+# --- 6. LOCKED TABLE CONFIGURATION ---
+# column_config right-aligns and formats. 
+# hide_index=True and selection_mode="none" makes it non-clickable.
 column_config = {
     "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%,.2f"),
     "PMC Commission": st.column_config.NumberColumn("PMC Commission", format="$%,.2f"),
@@ -74,8 +96,14 @@ column_config = {
     "Invoice Link": st.column_config.LinkColumn("View Invoice", display_text="🔗 View")
 }
 
-st.dataframe(df, use_container_width=True, column_config=column_config, hide_index=True)
+st.dataframe(
+    df, 
+    use_container_width=True, 
+    column_config=column_config, 
+    hide_index=True,
+    on_select="ignore" # This prevents row clicking/selection
+)
 
-# Export as formatted CSV
+# Export (JPG-style CSV per preference)
 csv = df.to_csv(index=False).encode('utf-8')
 st.download_button(f"📥 Download {active_owner} Statement", data=csv, file_name=f"{active_owner}_Statement.csv")
