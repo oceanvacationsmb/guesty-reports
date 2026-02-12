@@ -26,7 +26,6 @@ st.set_page_config(page_title="Owner Portal", layout="wide")
 st.title("🛡️ Guesty Automated Settlement Dashboard")
 
 with st.sidebar:
-    # --- TOP: OPERATIONAL FILTERS ---
     st.header("📊 View Report")
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
     
@@ -35,7 +34,6 @@ with st.sidebar:
     report_type = st.selectbox("Quick Select", ["By Month", "Date Range", "Year to Date (YTD)", "Full Year"])
     
     today = date.today()
-    
     if report_type == "By Month":
         sel_year = st.selectbox("Select Year", [2026, 2025, 2024], index=0)
         month_names = ["January", "February", "March", "April", "May", "June", 
@@ -43,18 +41,14 @@ with st.sidebar:
         sel_month = st.selectbox("Select Month", month_names, index=today.month-1)
         month_num = month_names.index(sel_month) + 1
         start_date = date(sel_year, month_num, 1)
-        # End date logic for the chosen month
         if month_num == 12: end_date = date(sel_year, 12, 31)
         else: end_date = date(sel_year, month_num + 1, 1)
-        
     elif report_type == "Date Range":
         start_date = st.date_input("Start Date", date(today.year, today.month, 1))
         end_date = st.date_input("End Date", today)
-        
     elif report_type == "Year to Date (YTD)":
         start_date = date(today.year, 1, 1)
         end_date = today
-        
     else: # Full Year
         sel_year = st.selectbox("Select Year", [2026, 2025, 2024], index=0)
         start_date = date(sel_year, 1, 1)
@@ -79,7 +73,6 @@ with st.sidebar:
             del st.session_state.owner_db[target_owner]
             st.rerun()
 
-    # --- BOTTOM: CONNECTION SETTINGS ---
     st.markdown("<br><br><br>", unsafe_allow_html=True)
     with st.expander("🔌 Connection Settings"):
         c_id = st.text_input("Client ID", value="0oaszuo22iOg2lk1P5d7")
@@ -102,7 +95,6 @@ if token:
         "fields": "confirmationCode money checkIn",
         "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'
     }
-    
     res = requests.get(res_url, headers=headers, params=params)
     raw_api_data = res.json().get("results", []) if res.status_code == 200 else []
 
@@ -111,57 +103,54 @@ if token:
         fare = float(money.get("fare", 0))
         clean = float(money.get("cleaningFee", 0))
         comm = round(fare * (conf['pct'] / 100), 2)
-        
         t_fare += fare
         t_comm += comm
         t_cln += clean
-        
-        row = {
-            "ID": r.get("confirmationCode"),
-            "Date": r.get("checkIn")[:10],
-            "Accommodation": fare,
-            "Commission": comm,
-            "Expenses": 0.0,
-            "Invoice": f"https://app.guesty.com/reservations/{r.get('confirmationCode')}"
-        }
+        row = {"ID": r.get("confirmationCode"), "Date": r.get("checkIn")[:10], "Accommodation": fare, "Commission": comm, "Expenses": 0.0, "Invoice": f"https://app.guesty.com/reservations/{r.get('confirmationCode')}"}
         if conf['type'] == "Draft":
-            row["Net Payout"] = fare + clean
-            row["Cleaning"] = clean
+            row["Net Payout"], row["Cleaning"] = fare + clean, clean
         else:
             row["Net Payout"] = fare - comm
         rows.append(row)
 
-df = pd.DataFrame(rows)
-
-# --- 4. RENDER SUMMARY (ALWAYS VISIBLE) ---
+# --- 4. RENDER SUMMARY & TABLE REGARDLESS ---
 st.header(f"Settlement Report: {active_owner} ({conf['pct']}%)")
-st.caption(f"Period: {start_date} to {end_date}")
+st.caption(f"Period: {start_date} to {end_date} | Type: {conf['type']}")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"$0.00")
 with c4:
-    # Always calculates based on current total values
     total_val = (t_fare + t_cln) if conf['type'] == "Draft" else (t_fare - t_comm)
     st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
-# --- 5. RENDER TABLE ---
-if not token:
-    st.info("👋 Enter your Client Secret in the sidebar 'Connection Settings' to see detailed reservation data.")
-elif df.empty:
-    st.warning("No data found for this period.")
+# Create Placeholder DataFrame if empty to "Show Table Regardless"
+if not rows:
+    if conf['type'] == "Draft":
+        df = pd.DataFrame(columns=["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"])
+    else:
+        df = pd.DataFrame(columns=["ID", "Date", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"])
 else:
-    order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
-    config = {
-        "Net Payout": st.column_config.NumberColumn(format="$%,.2f"),
-        "Accommodation": st.column_config.NumberColumn(format="$%,.2f"),
-        "Cleaning": st.column_config.NumberColumn(format="$%,.2f"),
-        "Commission": st.column_config.NumberColumn(format="$%,.2f"),
-        "Expenses": st.column_config.NumberColumn(format="$%,.2f"),
-        "Invoice": st.column_config.LinkColumn(display_text="🔗 View")
-    }
-    st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
+    df = pd.DataFrame(rows)
+
+order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"] if conf['type'] == "Draft" else ["ID", "Date", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"]
+config = {
+    "Net Payout": st.column_config.NumberColumn(format="$%,.2f"),
+    "Accommodation": st.column_config.NumberColumn(format="$%,.2f"),
+    "Cleaning": st.column_config.NumberColumn(format="$%,.2f"),
+    "Commission": st.column_config.NumberColumn(format="$%,.2f"),
+    "Expenses": st.column_config.NumberColumn(format="$%,.2f"),
+    "Invoice": st.column_config.LinkColumn(display_text="🔗 View")
+}
+
+st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
+
+if not token:
+    st.info("💡 Table is in preview mode. Enter API Secret to load live reservations.")
+elif df.empty:
+    st.warning("No reservations found for this selected period.")
+else:
     st.download_button("📥 Download Statement", df.to_csv(index=False), file_name=f"{active_owner}_Report.csv", use_container_width=True)
