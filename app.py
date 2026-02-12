@@ -114,13 +114,20 @@ st.markdown(f"""
     <br>
     """, unsafe_allow_html=True)
 
-# --- 6. SUMMARY METRICS ---
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Gross Revenue", f"${t_gross:,.2f}")
-c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
-c3.metric("Cleaning Total", f"${t_cln:,.2f}")
-c4.metric("Total Expenses", f"${t_exp:,.2f}")
-c5.metric("NET PAYOUT", f"${t_net_payout:,.2f}")
+# --- 6. SUMMARY METRICS (Conditional Card Logic) ---
+if conf['type'] == "Payout":
+    c1, c2, c4, c5 = st.columns(4)
+    c1.metric("Gross Revenue", f"${t_gross:,.2f}")
+    c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
+    c4.metric("Total Expenses", f"${t_exp:,.2f}")
+    c5.metric("NET PAYOUT", f"${t_net_payout:,.2f}")
+else:
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Gross Revenue", f"${t_gross:,.2f}")
+    c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
+    c3.metric("Cleaning Total", f"${t_cln:,.2f}")
+    c4.metric("Total Expenses", f"${t_exp:,.2f}")
+    c5.metric("NET PAYOUT", f"${t_net_payout:,.2f}")
 
 st.divider()
 
@@ -130,7 +137,6 @@ if conf['type'] == "Payout":
 else:
     order = ["ID", "Check-in/Out", "Gross Revenue", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
 
-# Explicitly forcing 2 decimal places in display formatting
 config = {
     col: st.column_config.NumberColumn(format="$%.2f") 
     for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Gross Revenue"]
