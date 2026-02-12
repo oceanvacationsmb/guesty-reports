@@ -5,8 +5,8 @@ from datetime import datetime
 import calendar
 import json
 
-# --- 1. GUESTY API WITH CACHING ---
-@st.cache_data(ttl=3600)  # Remembers data for 1 hour to avoid rate limits
+# --- 1. GUESTY API WITH RATE-LIMIT PROTECTION ---
+@st.cache_data(ttl=3600)  # Remembers your login token for 1 hour
 def get_guesty_token(cid, csec):
     url = "https://open-api.guesty.com/oauth2/token"
     payload = {"grant_type": "client_credentials", "client_id": cid.strip(), "client_secret": csec.strip()}
@@ -17,19 +17,19 @@ def get_guesty_token(cid, csec):
     except:
         return None
 
-@st.cache_data(ttl=600) # Remembers the data for 10 mins
+@st.cache_data(ttl=600) # Remembers reservation data for 10 minutes
 def fetch_data(month, year):
     token = get_guesty_token(st.secrets["CLIENT_ID"], st.secrets["CLIENT_SECRET"])
     if not token: return None
     
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     
-    # Guesty uses YYYY-MM-DD
+    # Guesty expects YYYY-MM-DD format
     start = f"{year}-{month:02d}-01"
     last_day = calendar.monthrange(year, month)[1]
     end = f"{year}-{month:02d}-{last_day}"
     
-    # Guesty-specific filter structure
+    # Filtering reservations by check-in date within the month
     filters = json.dumps([
         {"field": "checkInDate", "operator": "$gte", "value": start},
         {"field": "checkInDate", "operator": "$lte", "value": end}
@@ -37,13 +37,16 @@ def fetch_data(month, year):
     
     url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters={filters}"
     r = requests.get(url, headers=headers)
+    if r.status_code == 429:
+        st.error("Guesty Rate Limit Hit. Please wait 2 minutes.")
+        return None
     return r.json().get("results", [])
 
-# --- 2. THE INTERFACE ---
+# --- 2. THE WEBSITE INTERFACE ---
 st.title("🏡 Guesty Automated Monthly Report")
 
-# Use a form to stop the app from refreshing too often
-with st.form("my_report"):
+# Use a form to prevent accidental multiple API calls
+with st.form("report_selection"):
     col1, col2, col3 = st.columns(3)
     with col1:
         owner = st.selectbox("Select Owner", ["ERAN MARON", "YEN FRENCH"])
@@ -56,29 +59,42 @@ with st.form("my_report"):
 if submit:
     results = fetch_data(m, y)
     if not results:
-        st.warning("No data found or API is busy. Wait 2 minutes and try again.")
+        st.warning("No data found or API is cooling down. Please wait a moment.")
     else:
-        # Process the property summary as requested
         data_list = []
         for res in results:
             money = res.get('money', {})
-            # Check if this reservation is from the website for Eran's 1% fee
-            is_website = "engine" in res.get('source', '').lower()
+            # Pulling manual expenses from extraCharges field
+            expenses = 0
+            for charge in money.get('extraCharges', []):
+                desc = charge.get('description', '').lower()
+                if any(word in desc for word in ["expense", "maintenance", "repair"]):
+                    expenses += charge.get('amount', 0)
+            
+            # 1% Website Fee logic for Eran
+            source = res.get('source', '').lower()
+            is_website = "engine" in source or "website" in source
             
             data_list.append({
                 "Property": res.get('listing', {}).get('title', 'Unknown'),
                 "Accommodation": money.get('fare', 0),
                 "Cleaning": money.get('cleaningFee', 0),
+                "Expenses": expenses,
                 "Is Web": is_website
             })
         
+        # --- DATA SUMMARY PER PROPERTY ---
         df = pd.DataFrame(data_list)
-        # Group by property for a single summary line per house
         summary = df.groupby("Property").sum().reset_index()
+        st.subheader(f"Property Totals for {owner}")
         st.table(summary)
         
-        # Display Totals
+        # Final Totals
         total_acc = summary['Accommodation'].sum()
+        total_exp = summary['Expenses'].sum()
         rate = 0.12 if "ERAN" in owner.upper() else 0.15
-        st.metric("Total Accommodation", f"${total_acc:,.2f}")
-        st.write(f"Management Fee ({int(rate*100)}%): -${(total_acc * rate):,.2f}")
+        
+        st.divider()
+        st.write(f"**Total Accommodation:** ${total_acc:,.2f}")
+        st.write(f"**Management Fee ({int(rate*100)}%):** -${(total_acc * rate):,.2f}")
+        st.write(f"**Total Expenses:** -${total_exp:,.2f}")
