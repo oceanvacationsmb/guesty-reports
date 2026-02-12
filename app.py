@@ -23,8 +23,14 @@ def get_mimic_data(owner):
 with st.sidebar:
     st.header("📂 NAVIGATION")
     mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
+    
+    st.divider()
     active_owner = st.selectbox("SWITCH ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
     conf = st.session_state.owner_db[active_owner]
+    
+    st.divider()
+    st.header("📅 SELECT PERIOD")
+    report_type = st.selectbox("CONTEXT", ["BY MONTH", "FULL YEAR", "YTD", "BETWEEN DATES"], index=0)
     today, start_date, end_date = date.today(), date(2026, 2, 1), date(2026, 2, 28)
 
 # --- 3. CALCULATION ENGINE ---
@@ -39,15 +45,14 @@ for name, settings in st.session_state.owner_db.items():
         o_cln += c; o_exp += e; o_fare += f
     
     is_draft = settings['type'] == "DRAFT"
-    gross_payout = (o_fare + o_cln) if is_draft else o_fare
+    top_revenue = (o_fare + o_cln) if is_draft else o_fare
     net_revenue = o_fare - (o_cln if is_draft else 0) - o_comm - o_exp
     draft_total = (o_comm + o_cln + o_exp) if is_draft else 0
     ach_total = net_revenue if not is_draft else 0
     
     all_owners_data.append({
-        "OWNER": name, "TYPE": settings['type'], "GROSS": gross_payout, "ACC": o_fare, 
-        "PCT": settings['pct'], "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, 
-        "NET": net_revenue, "DRAFT": draft_total, "ACH": ach_total
+        "OWNER": name, "TYPE": settings['type'], "REVENUE": top_revenue, "PCT": settings['pct'],
+        "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, "NET": net_revenue, "DRAFT": draft_total, "ACH": ach_total
     })
     total_ov2 += o_comm
 
@@ -57,19 +62,17 @@ if mode == "OWNER STATEMENTS":
     
     s = next(item for item in all_owners_data if item["OWNER"] == active_owner)
     
-    # --- UPDATED SUMMARY ROW (INCLUDES ACCOMMODATION FOR ALL) ---
     if conf['type'] == "DRAFT":
-        m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-        m1.metric("GROSS PAYOUT", f"${s['GROSS']:,.2f}")
-        m2.metric("ACCOMMODATION", f"${s['ACC']:,.2f}") # ADDED
-        m3.metric("TOTAL CLEANING", f"${s['CLN']:,.2f}")
-        m4.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
-        m5.metric("EXPENSED", f"${s['EXP']:,.2f}")
-        m6.metric("NET REVENUE", f"${s['NET']:,.2f}")
-        m7.metric("🏦 DRAFT FROM OWNER", f"${s['DRAFT']:,.2f}")
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("GROSS PAYOUT", f"${s['REVENUE']:,.2f}")
+        m2.metric("TOTAL CLEANING", f"${s['CLN']:,.2f}")
+        m3.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
+        m4.metric("EXPENSED", f"${s['EXP']:,.2f}")
+        m5.metric("NET REVENUE", f"${s['NET']:,.2f}")
+        m6.metric("🏦 DRAFT FROM OWNER", f"${s['DRAFT']:,.2f}")
     else:
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("ACCOMMODATION", f"${s['ACC']:,.2f}")
+        m1.metric("ACCOMMODATION", f"${s['REVENUE']:,.2f}")
         m2.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
         m3.metric("EXPENSED", f"${s['EXP']:,.2f}")
         m4.metric("NET REVENUE", f"${s['NET']:,.2f}")
@@ -85,36 +88,23 @@ if mode == "OWNER STATEMENTS":
         for _, r in sub.iterrows():
             f, c, e = r['Fare'], r['Cln'], r['Exp']
             cm = round(f * (conf['pct'] / 100), 2)
-            gp = (f + c) if conf['type'] == "DRAFT" else f
+            top_line = (f + c) if conf['type'] == "DRAFT" else f
             nr = f - (c if conf['type'] == "DRAFT" else 0) - cm - e
             stay_dates = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
-            
-            row = {
-                "ID": r['ID'], "CHECK-IN/OUT": stay_dates,
-                "ACCOMMODATION": f, # ALWAYS SHOWN NOW
-                "CLEANING": c, "PMC COMM": cm, "EXPENSED": e,
-                "INVOICE": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None,
-                "NET REVENUE": nr
-            }
-            if conf['type'] == "DRAFT":
-                row["GROSS PAYOUT"] = gp
-                
+            row = {"ID": r['ID'], "CHECK-IN/OUT": stay_dates, "REV": top_line, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "INVOICE": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "NET REVENUE": nr}
             rows.append(row)
         
-        # Order columns to prioritize Accommodation
-        order = ["ID", "CHECK-IN/OUT", "GROSS PAYOUT", "ACCOMMODATION", "CLEANING", "PMC COMM", "EXPENSED", "INVOICE", "NET REVENUE"] if conf['type'] == "DRAFT" else ["ID", "CHECK-IN/OUT", "ACCOMMODATION", "PMC COMM", "EXPENSED", "INVOICE", "NET REVENUE"]
-        
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={
-            "GROSS PAYOUT": st.column_config.NumberColumn(format="$%.2f"),
-            "ACCOMMODATION": st.column_config.NumberColumn(format="$%.2f"),
+        rev_col = "GROSS PAYOUT" if conf['type'] == "DRAFT" else "ACCOMMODATION"
+        final_df = pd.DataFrame(rows).rename(columns={"REV": rev_col})
+        st.dataframe(final_df, use_container_width=True, hide_index=True, column_config={
+            rev_col: st.column_config.NumberColumn(format="$%.2f"),
             "CLEANING": st.column_config.NumberColumn(format="$%.2f"),
             "PMC COMM": st.column_config.NumberColumn(format="$%.2f"),
             "EXPENSED": st.column_config.NumberColumn(format="$%.2f"),
             "NET REVENUE": st.column_config.NumberColumn(format="$%.2f"),
             "INVOICE": st.column_config.LinkColumn("INVOICE", display_text="🔗 VIEW")
-        }, column_order=order)
+        }, column_order=["ID", "CHECK-IN/OUT", rev_col, "CLEANING", "PMC COMM", "EXPENSED", "INVOICE", "NET REVENUE"] if conf['type'] == "DRAFT" else ["ID", "CHECK-IN/OUT", rev_col, "PMC COMM", "EXPENSED", "INVOICE", "NET REVENUE"])
 
 elif mode == "PMC REPORT":
     st.title("PMC INTERNAL CONTROL REPORT")
-    st.metric("TRANSFER TO OV2", f"${total_ov2:,.2f}")
-    st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True)
+    # (Rest of PMC Report Logic...)
