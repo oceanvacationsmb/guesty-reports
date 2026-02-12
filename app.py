@@ -8,20 +8,21 @@ import urllib.parse
 # --- 1. GUESTY API HELPERS ---
 def get_guesty_token():
     url = "https://open-api.guesty.com/oauth2/token"
-    # Safety check for Secrets
-    if "CLIENT_ID" not in st.secrets:
-        st.error("Missing CLIENT_ID in Streamlit Secrets!")
+    # Ensure keys exist in Streamlit Secrets
+    if "CLIENT_ID" not in st.secrets or "CLIENT_SECRET" not in st.secrets:
+        st.error("Go to Settings > Secrets and add CLIENT_ID and CLIENT_SECRET")
         return None
         
     payload = {
         "grant_type": "client_credentials",
-        "scope": "all",
         "client_id": st.secrets["CLIENT_ID"],
         "client_secret": st.secrets["CLIENT_SECRET"]
+        # Removed 'scope' as it was causing the 'invalid_scope' error
     }
+    
     response = requests.post(url, data=payload)
     if response.status_code != 200:
-        st.error(f"Failed to get Token: {response.text}")
+        st.error(f"Auth Failed: {response.text}")
         return None
     return response.json().get("access_token")
 
@@ -31,29 +32,29 @@ def fetch_data(month, year):
     
     headers = {"Authorization": f"Bearer {token}", "accept": "application/json"}
     
-    # Calculate dates
+    # Standard date strings Guesty expects
     start_date = f"{year}-{month:02d}-01"
     last_day = calendar.monthrange(year, month)[1]
     end_date = f"{year}-{month:02d}-{last_day}"
     
-    # Correcting the Filter format for Guesty API
+    # Clean filter structure
     filters = [
         {"field": "checkInDate", "operator": "$gte", "value": start_date},
         {"field": "checkInDate", "operator": "$lte", "value": end_date}
     ]
     
-    # Encode the filter for the URL
-    filter_json = urllib.parse.quote(str(filters).replace("'", '"'))
-    url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters={filter_json}"
+    # URL Encoding the filters properly
+    encoded_filters = urllib.parse.quote(str(filters).replace("'", '"'))
+    url = f"https://open-api.guesty.com/v1/reservations?limit=100&filters={encoded_filters}"
     
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
-        st.error(f"Guesty API Error: {response.status_code} - {response.text}")
+        st.error(f"Data Fetch Error: {response.status_code}")
         return []
         
     return response.json().get("results", [])
 
-# --- 2. THE REPORT INTERFACE ---
+# --- 2. THE WEBSITE ---
 st.title("🏡 Guesty Automated Monthly Report")
 
 col1, col2, col3 = st.columns(3)
@@ -65,53 +66,58 @@ with col3:
     y = st.number_input("Year", value=2026)
 
 if st.button("Generate Monthly Report"):
-    with st.spinner("Fetching data..."):
+    with st.spinner("Fetching live data..."):
         data = fetch_data(m, y)
         
         if not data:
-            st.info("No data found for this selection. Double check your API keys and the selected month.")
+            st.warning("No reservations found. Ensure you have confirmed bookings for this month.")
         else:
             rows = []
             for res in data:
-                acc = res.get('money', {}).get('fare', 0)
-                clean = res.get('money', {}).get('cleaningFee', 0)
+                # Basic Money Pulling
+                money = res.get('money', {})
+                acc = money.get('fare', 0)
+                clean = money.get('cleaningFee', 0)
                 source = res.get('source', '').lower()
                 prop_title = res.get('listing', {}).get('title', 'Unknown Property')
                 
-                # Logic: 1% Fee for Eran + booking engine
+                # Logic: Eran 12% + 1% Web Fee | Others 15%
                 is_eran = "ERAN" in owner.upper()
-                web_fee = (acc * 0.01) if (is_eran and "engine" in source) else 0
                 rate = 0.12 if is_eran else 0.15
+                
+                # FIX: Check if source is 'booking engine' for 1% fee
+                web_fee = (acc * 0.01) if (is_eran and "engine" in source) else 0
                 
                 rows.append({
                     "Property": prop_title,
                     "Accommodation": acc,
                     "Cleaning": clean,
-                    "PMC": acc * rate,
-                    "Web Fee": web_fee
+                    "Management Fee": acc * rate,
+                    "Website Fee (1%)": web_fee
                 })
             
+            # Create Property Summary Table
             df = pd.DataFrame(rows)
             summary = df.groupby("Property").sum().reset_index()
             
-            st.write(f"### Property Totals for {owner}")
+            st.write(f"### Totals per Property")
             st.table(summary)
             
-            # Show Detailed Calculations
-            total_acc = summary['Accommodation'].sum()
-            total_pmc = summary['PMC'].sum()
-            total_clean = summary['Cleaning'].sum()
-            total_web = summary['Web Fee'].sum()
+            # Calculation Footer
+            t_acc = summary['Accommodation'].sum()
+            t_clean = summary['Cleaning'].sum()
+            t_fee = summary['Management Fee'].sum()
+            t_web = summary['Website Fee (1%)'].sum()
             
-            st.write("---")
-            st.write(f"**Combined Total Accommodation:** ${total_acc:,.2f}")
-            st.write(f"**Combined Management Fee ({int(rate*100)}%):** -${total_pmc:,.2f}")
+            st.divider()
+            st.write(f"**Total Combined Accommodation:** ${t_acc:,.2f}")
+            st.write(f"**Total Management Fees:** -${t_fee:,.2f}")
             
             if is_eran:
-                st.write(f"**Combined Cleaning Fee:** -${total_clean:,.2f}")
-                st.write(f"**Combined Website Fee (1%):** -${total_web:,.2f}")
-                net = (total_acc + total_clean) - (total_pmc + total_clean + total_web)
-                st.info(f"**Total to Draft from Eran:** ${net:,.2f}")
+                st.write(f"**Total Cleaning Fees:** -${t_clean:,.2f}")
+                st.write(f"**Total Website Fees (1%):** -${t_web:,.2f}")
+                net = (t_acc + t_clean) - (t_fee + t_clean + t_web)
+                st.info(f"**Amount to DRAFT from Eran:** ${net:,.2f}")
             else:
-                net = total_acc - (total_pmc + total_clean)
-                st.success(f"**Total Net Owner Revenue:** ${net:,.2f}")
+                net = t_acc - (t_fee + t_clean)
+                st.success(f"**Net Owner Payout:** ${net:,.2f}")
