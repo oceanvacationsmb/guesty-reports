@@ -34,7 +34,6 @@ st.set_page_config(page_title="PMC Statement", layout="wide")
 
 with st.sidebar:
     st.header("📊 View Report")
-    # Using the sidebar to set the active owner
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()), key='active_owner')
     
     st.divider()
@@ -149,8 +148,14 @@ with c4:
 
 st.divider()
 
+# --- 7. FORMATTED TABLE ---
 order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"] if conf['type'] == "Draft" else ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"]
-config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
+
+# NumberColumn right-aligns by default in Streamlit
+config = {
+    col: st.column_config.NumberColumn(format="$%,.2f") 
+    for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]
+}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
