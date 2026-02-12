@@ -26,11 +26,7 @@ st.set_page_config(page_title="Owner Portal", layout="wide")
 st.title("🛡️ Guesty Automated Settlement Dashboard")
 
 with st.sidebar:
-    st.header("🔌 Live Link")
-    c_id = st.text_input("Client ID", value="0oaszuo22iOg2lk1P5d7")
-    c_secret = st.text_input("Client Secret", type="password")
-    
-    st.divider()
+    # --- TOP: OPERATIONAL FILTERS ---
     st.header("📊 View Report")
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
     
@@ -39,16 +35,17 @@ with st.sidebar:
     report_type = st.selectbox("Quick Select", ["By Month", "Date Range", "Year to Date (YTD)", "Full Year"])
     
     today = date.today()
-    # Logic for Date Filtering
+    
     if report_type == "By Month":
+        # Added Year Picker alongside Month Picker
+        sel_year = st.selectbox("Select Year", [2026, 2025, 2024], index=0)
         month_names = ["January", "February", "March", "April", "May", "June", 
                        "July", "August", "September", "October", "November", "December"]
         sel_month = st.selectbox("Select Month", month_names, index=today.month-1)
         month_num = month_names.index(sel_month) + 1
-        start_date = date(today.year, month_num, 1)
-        # Handle end of year wrap-around
-        if month_num == 12: end_date = date(today.year, 12, 31)
-        else: end_date = date(today.year, month_num + 1, 1)
+        start_date = date(sel_year, month_num, 1)
+        if month_num == 12: end_date = date(sel_year, 12, 31)
+        else: end_date = date(sel_year, month_num + 1, 1)
         
     elif report_type == "Date Range":
         start_date = st.date_input("Start Date", date(today.year, today.month, 1))
@@ -59,7 +56,7 @@ with st.sidebar:
         end_date = today
         
     else: # Full Year
-        sel_year = st.selectbox("Select Year", [today.year, today.year-1], index=0)
+        sel_year = st.selectbox("Select Year", [2026, 2025, 2024], index=0)
         start_date = date(sel_year, 1, 1)
         end_date = date(sel_year, 12, 31)
 
@@ -82,14 +79,22 @@ with st.sidebar:
             del st.session_state.owner_db[target_owner]
             st.rerun()
 
+    # --- BOTTOM: CONNECTION SETTINGS ---
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    with st.expander("🔌 Connection Settings"):
+        c_id = st.text_input("Client ID", value="0oaszuo22iOg2lk1P5d7")
+        c_secret = st.text_input("Client Secret", type="password")
+        if st.button("🗑️ Reset Cache"):
+            st.cache_data.clear()
+            st.rerun()
+
 # --- 3. CALCULATIONS & LIVE FETCH ---
 token = get_guesty_token(c_id, c_secret)
 
 if token:
-    # Pulling reservations filtering by checkIn date 
     res_url = "https://open-api.guesty.com/v1/reservations"
     headers = {"Authorization": f"Bearer {token}"}
-    # Guesty filter format: {"checkIn":{"$gte":"2026-01-01","$lte":"2026-01-31"}}
+    # Live filtering to only pull what's needed
     params = {
         "limit": 100, 
         "fields": "confirmationCode money checkIn",
@@ -160,4 +165,4 @@ if token:
     else:
         st.warning("No data found for this period.")
 else:
-    st.info("👋 Please enter your API Secret in the sidebar.")
+    st.info("👋 Setup your connection in the sidebar to load live data.")
