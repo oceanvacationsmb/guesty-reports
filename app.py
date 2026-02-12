@@ -31,11 +31,18 @@ def get_mimic_reservations():
 
 # --- 3. DASHBOARD UI ---
 st.set_page_config(page_title="PMC Statement Tool", layout="wide")
-st.title("🛡️ PMC Statement Tool")
+
+# Center Aligned Headers
+st.markdown(f"""
+    <div style="text-align: center;">
+        <h1 style="margin-bottom: 0;">PMC Statement Tool</h1>
+        <h3 style="margin-top: 0; color: #555;">Reservation Report: {st.session_state.get('active_owner', 'ERAN')}</h3>
+    </div>
+    """, unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("📊 View Report")
-    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
+    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()), key='active_owner')
     
     st.divider()
     st.header("📅 Select Period")
@@ -96,10 +103,14 @@ if token:
               "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'}
     res = requests.get(res_url, headers=headers, params=params)
     source_data = res.json().get("results", []) if res.status_code == 200 else []
-    data_type = "LIVE API"
+    status_msg = f"LIVE API Mode | Style: {conf['type']}"
 else:
     source_data = get_mimic_reservations()
-    data_type = f"MIMIC ({owner_pct:.0f}%)"
+    status_msg = f"Source: MIMIC ({owner_pct:.0f}%) Mode | Style: {conf['type']}"
+
+# Centered Status Message
+st.markdown(f"<p style='text-align: center; color: gray;'>{status_msg}</p>", unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
 
 for r in source_data:
     if token:
@@ -125,9 +136,6 @@ for r in source_data:
 df = pd.DataFrame(rows)
 
 # --- 5. RENDER ---
-st.header(f"Reservation Report: {active_owner}")
-st.caption(f"Source: {data_type} Mode | Style: {conf['type']}")
-
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
@@ -143,6 +151,3 @@ config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net P
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
-
-if not token:
-    st.info(f"💡 Mimic data shown for {active_owner}. Enter API Secret in the sidebar expander to switch to Live Mode.")
