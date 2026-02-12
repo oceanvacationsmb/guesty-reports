@@ -5,8 +5,8 @@ from datetime import datetime
 # --- 1. DATABASE INITIALIZATION ---
 if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {
-        "ERAN (DRAFT)": {"pct": 20.0, "type": "Draft", "web_fee": 1.0},
-        "SMITH (PAYOUT)": {"pct": 15.0, "type": "Payout", "web_fee": 0.0},
+        "ERAN": {"pct": 20.0, "type": "Draft", "web_fee": 1.0},
+        "SMITH": {"pct": 15.0, "type": "Payout", "web_fee": 0.0},
     }
 
 # --- 2. TEST DATA ---
@@ -23,6 +23,7 @@ st.title("🛡️ Guesty Automated Settlement Dashboard")
 
 with st.sidebar:
     st.header("📊 View Report")
+    # Clean menu: Displaying only the owner name
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
     
     st.divider()
@@ -32,6 +33,7 @@ with st.sidebar:
 
 # --- 4. CALCULATIONS ---
 conf = st.session_state.owner_db[active_owner]
+owner_pct = conf['pct']
 raw_res = get_mock_reservations()
 rows = []
 
@@ -40,7 +42,7 @@ t_fare = t_comm = t_exp = t_cln = t_channel_net = 0
 for res in raw_res:
     fare = res['Fare']
     clean = res['Clean']
-    comm = round(fare * (conf['pct'] / 100), 2)
+    comm = round(fare * (owner_pct / 100), 2)
     channel_payout = fare + clean
     
     t_fare += fare
@@ -49,7 +51,6 @@ for res in raw_res:
     t_cln += clean
     t_channel_net += channel_payout
     
-    # Base columns for all reports
     row = {
         "Reservation ID": res['ID'],
         "Dates (In/Out)": res['Dates'],
@@ -59,7 +60,6 @@ for res in raw_res:
         "Invoice": res['Invoice']
     }
     
-    # Specific columns for DRAFT owners
     if conf['type'] == "Draft":
         row["Net Payout"] = float(channel_payout)
         row["Cleaning"] = float(clean)
@@ -68,44 +68,31 @@ for res in raw_res:
 
 df = pd.DataFrame(rows)
 
-# --- 5. DYNAMIC COLUMN ORDERING ---
-# Order: Net payout -> Accommodation -> cleaning -> commission -> expense
-if conf['type'] == "Draft":
-    final_order = [
-        "Reservation ID", 
-        "Dates (In/Out)", 
-        "Net Payout", 
-        "Accommodation", 
-        "Cleaning", 
-        "Commission", 
-        "Expenses", 
-        "Invoice"
-    ]
-else:
-    # Standard Payout Order
-    final_order = [
-        "Reservation ID", 
-        "Dates (In/Out)", 
-        "Accommodation", 
-        "Commission", 
-        "Expenses", 
-        "Invoice"
-    ]
-
-# --- 6. RENDER SUMMARY & TABLE ---
-st.header(f"Settlement Report: {active_owner}")
+# --- 5. RENDER CLEAN SUMMARY ---
+# Header: Only name and percentage
+st.header(f"Settlement Report: {active_owner} ({owner_pct}%)")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
-c2.metric("Total Commission", f"${t_comm:,.2f}")
+c2.metric(f"PMC Commission ({owner_pct}%)", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"${t_exp:,.2f}")
+
 with c4:
-    total_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
-    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
+    if conf['type'] == "Draft":
+        total_val = t_comm + t_cln + t_exp
+        st.metric("TOTAL TO DRAFT", f"${total_val:,.2f}")
+    else:
+        total_val = t_fare - t_comm - t_exp
+        st.metric("NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
-# Compact column configuration (No $ in titles, fixed 2 decimals)
+# --- 6. TABLE ORDER & CONFIG ---
+if conf['type'] == "Draft":
+    final_order = ["Reservation ID", "Dates (In/Out)", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
+else:
+    final_order = ["Reservation ID", "Dates (In/Out)", "Accommodation", "Commission", "Expenses", "Invoice"]
+
 column_config = {
     "Net Payout": st.column_config.NumberColumn("Net Payout", format="$%.2f", width="small"),
     "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%.2f", width="small"),
@@ -119,7 +106,7 @@ st.dataframe(
     df, 
     use_container_width=True, 
     column_config=column_config, 
-    column_order=final_order, # Forces the exact requested order
+    column_order=final_order, 
     hide_index=True,
     on_select="ignore"
 )
