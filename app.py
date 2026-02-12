@@ -41,8 +41,6 @@ for res in raw_res:
     fare = res['Fare']
     clean = res['Clean']
     comm = round(fare * (conf['pct'] / 100), 2)
-    
-    # Net Payout from Booking Channel (Total money sent to the owner initially)
     channel_payout = fare + clean
     
     t_fare += fare
@@ -51,31 +49,50 @@ for res in raw_res:
     t_cln += clean
     t_channel_net += channel_payout
     
+    # Base columns for all reports
     row = {
         "Reservation ID": res['ID'],
         "Dates (In/Out)": res['Dates'],
         "Accommodation": float(fare),
-        "PMC Commission": float(comm)
+        "Commission": float(comm),
+        "Expenses": float(res['Exp']),
+        "Invoice": res['Invoice']
     }
     
-    # DRAFT SPECIFIC: Show Channel Payout and Cleaning
+    # Specific columns for DRAFT owners
     if conf['type'] == "Draft":
-        row["Net Payout (Channel)"] = float(channel_payout)
-        row["Cleaning Fee"] = float(clean)
+        row["Net Payout"] = float(channel_payout)
+        row["Cleaning"] = float(clean)
     
-    row["Expenses"] = float(res['Exp'])
-    row["Invoice Link"] = res['Invoice']
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-# Define column order strictly
+# --- 5. DYNAMIC COLUMN ORDERING ---
+# Order: Net payout -> Accommodation -> cleaning -> commission -> expense
 if conf['type'] == "Draft":
-    base_order = ["Reservation ID", "Dates (In/Out)", "Accommodation", "Net Payout (Channel)", "PMC Commission", "Cleaning Fee", "Expenses", "Invoice Link"]
+    final_order = [
+        "Reservation ID", 
+        "Dates (In/Out)", 
+        "Net Payout", 
+        "Accommodation", 
+        "Cleaning", 
+        "Commission", 
+        "Expenses", 
+        "Invoice"
+    ]
 else:
-    base_order = ["Reservation ID", "Dates (In/Out)", "Accommodation", "PMC Commission", "Expenses", "Invoice Link"]
+    # Standard Payout Order
+    final_order = [
+        "Reservation ID", 
+        "Dates (In/Out)", 
+        "Accommodation", 
+        "Commission", 
+        "Expenses", 
+        "Invoice"
+    ]
 
-# --- 5. RENDER CLEAN SUMMARY ---
+# --- 6. RENDER SUMMARY & TABLE ---
 st.header(f"Settlement Report: {active_owner}")
 
 c1, c2, c3, c4 = st.columns(4)
@@ -83,31 +100,26 @@ c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric("Total Commission", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"${t_exp:,.2f}")
 with c4:
-    if conf['type'] == "Draft":
-        total_val = t_comm + t_cln + t_exp
-        st.metric("TOTAL TO DRAFT", f"${total_val:,.2f}")
-    else:
-        total_val = t_fare - t_comm - t_exp
-        st.metric("NET PAYOUT", f"${total_val:,.2f}")
+    total_val = (t_comm + t_cln + t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
+    st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
-# --- 6. COMPACT TABLE CONFIGURATION ---
+# Compact column configuration (No $ in titles, fixed 2 decimals)
 column_config = {
-    "Reservation ID": st.column_config.TextColumn("Res ID", width="small"),
+    "Net Payout": st.column_config.NumberColumn("Net Payout", format="$%.2f", width="small"),
     "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%.2f", width="small"),
-    "Net Payout (Channel)": st.column_config.NumberColumn("Net Payout", format="$%.2f", width="small", help="Money sent from Channel to Owner"),
-    "PMC Commission": st.column_config.NumberColumn("Commission", format="$%.2f", width="small"),
-    "Cleaning Fee": st.column_config.NumberColumn("Cleaning", format="$%.2f", width="small"),
+    "Cleaning": st.column_config.NumberColumn("Cleaning", format="$%.2f", width="small"),
+    "Commission": st.column_config.NumberColumn("Commission", format="$%.2f", width="small"),
     "Expenses": st.column_config.NumberColumn("Expenses", format="$%.2f", width="small"),
-    "Invoice Link": st.column_config.LinkColumn("Invoice", display_text="🔗 View", width="small")
+    "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View", width="small")
 }
 
 st.dataframe(
     df, 
     use_container_width=True, 
     column_config=column_config, 
-    column_order=base_order,
+    column_order=final_order, # Forces the exact requested order
     hide_index=True,
     on_select="ignore"
 )
