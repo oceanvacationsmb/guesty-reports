@@ -29,7 +29,7 @@ def get_mimic_reservations():
         {"ID": "RES-55435", "In": date(2026, 2, 18), "Out": date(2026, 2, 22), "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10}
     ]
 
-# --- 3. SIDEBAR (RESTORED SETTINGS & DATES) ---
+# --- 3. SIDEBAR ---
 st.set_page_config(page_title="PMC Statement", layout="wide")
 
 with st.sidebar:
@@ -60,10 +60,9 @@ with st.sidebar:
         edit_list = list(st.session_state.owner_db.keys())
         target_owner = st.selectbox("Edit/Delete", ["+ Add New"] + edit_list)
         name_input = st.text_input("Owner Name", value="" if target_owner == "+ Add New" else target_owner).upper().strip()
-        current_pct = st.session_state.owner_db.get(target_owner, {"pct": 12.0})["pct"]
-        current_type = st.session_state.owner_db.get(target_owner, {"type": "Draft"})["type"]
-        upd_pct = st.number_input("Commission %", 0.0, 100.0, float(current_pct))
-        upd_type = st.selectbox("Settlement Style", ["Draft", "Payout"], index=0 if current_type == "Draft" else 1)
+        conf_data = st.session_state.owner_db.get(target_owner, {"pct": 12.0, "type": "Draft"})
+        upd_pct = st.number_input("Commission %", 0.0, 100.0, float(conf_data["pct"]))
+        upd_type = st.selectbox("Settlement Style", ["Draft", "Payout"], index=0 if conf_data["type"] == "Draft" else 1)
         
         c_save, c_del = st.columns(2)
         if c_save.button("💾 Save"):
@@ -72,11 +71,6 @@ with st.sidebar:
         if target_owner != "+ Add New" and c_del.button("🗑️ Delete", type="primary"):
             del st.session_state.owner_db[target_owner]
             st.rerun()
-
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    with st.expander("🔌 Connection Settings"):
-        c_id = st.text_input("Client ID", value="0oaszuo22iOg2lk1P5d7")
-        c_secret = st.text_input("Client Secret", type="password")
 
 # --- 4. CALCULATIONS ---
 conf = st.session_state.owner_db[active_owner]
@@ -90,7 +84,6 @@ for r in source_data:
     fare, clean, exp = r['Fare'], r['Clean'], r['Exp']
     comm = round(fare * (owner_pct / 100), 2)
     
-    # APPLYING FORMULAS
     if conf['type'] == "Draft":
         gross_rev = fare + clean
         net_payout = fare - clean - comm - exp
@@ -142,11 +135,12 @@ c5.metric("NET PAYOUT", f"${t_net_payout:,.2f}")
 
 st.divider()
 
-# --- 7. TABLE ---
+# --- 7. TABLE (Gross Revenue moved to Column #3) ---
 if conf['type'] == "Payout":
     order = ["ID", "Check-in/Out", "Accommodation", "Commission", "Expenses", "Invoice", "Net Payout"]
 else:
-    order = ["ID", "Check-in/Out", "Accommodation", "Cleaning", "Gross Revenue", "Commission", "Expenses", "Invoice", "Net Payout"]
+    # Gross Revenue is now at index 2 (Column 3)
+    order = ["ID", "Check-in/Out", "Gross Revenue", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
 
 config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Gross Revenue"]}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
