@@ -30,12 +30,12 @@ def get_mimic_reservations():
     ]
 
 # --- 3. DASHBOARD UI ---
-st.set_page_config(page_title="PMC Statement Tool", layout="wide")
+st.set_page_config(page_title="PMC Statement", layout="wide")
 
 # Center Aligned Headers
 st.markdown(f"""
     <div style="text-align: center;">
-        <h1 style="margin-bottom: 0;">PMC Statement Tool</h1>
+        <h1 style="margin-bottom: 0;">PMC Statement</h1>
         <h3 style="margin-top: 0; color: #555;">Reservation Report: {st.session_state.get('active_owner', 'ERAN')}</h3>
     </div>
     """, unsafe_allow_html=True)
