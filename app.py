@@ -74,9 +74,9 @@ for name, settings in st.session_state.owner_db.items():
         o_comm += round(f * (settings['pct'] / 100), 2)
         o_cln += c; o_exp += e; o_fare += f
     
-    # Financial Formulas
     is_draft = settings['type'] == "Draft"
-    top_revenue = (o_fare + o_cln) if is_draft else o_fare # Acc only for Payout
+    # Logic Update: Revenue is either Gross Payout or Accommodation
+    top_revenue = (o_fare + o_cln) if is_draft else o_fare
     net_revenue = o_fare - (o_cln if is_draft else 0) - o_comm - o_exp
     draft_total = (o_comm + o_cln + o_exp) if is_draft else 0
     ach_total = net_revenue if not is_draft else 0
@@ -95,8 +95,8 @@ if mode == "Owner Statements":
     s = next(item for item in all_owners_data if item["Owner"] == active_owner)
     m1, m2, m3, m4, m5 = st.columns(5)
     
-    # DYNAMIC METRIC LABELS
-    rev_label = "Gross Payout" if conf['type'] == "Draft" else "Acc (Accommodation)"
+    # Labeling based on your request
+    rev_label = "Gross Payout" if conf['type'] == "Draft" else "Accommodation"
     m1.metric(rev_label, f"${s['Revenue']:,.2f}")
     m2.metric("Total Comm", f"${s['Comm']:,.2f}")
     m3.metric("Total Expenses", f"${s['Exp']:,.2f}")
@@ -118,14 +118,14 @@ if mode == "Owner Statements":
         for _, r in sub.iterrows():
             f, c, e = r['Fare'], r['Cln'], r['Exp']
             cm = round(f * (conf['pct'] / 100), 2)
-            # Table Logic: Gross Payout for Draft, Acc for Payout
             top_line = (f + c) if conf['type'] == "Draft" else f
             nr = f - (c if conf['type'] == "Draft" else 0) - cm - e
             
+            # Remove "Fare" column to simplify as requested
             row = {
                 "ID": r['ID'], "Dates": f"{r['In'].strftime('%m/%d')}",
-                rev_label: top_line, # Dynamic Header
-                "Fare": f, "Cleaning": c, "Comm": cm, "Exp": e,
+                rev_label: top_line,
+                "Cleaning": c, "Comm": cm, "Exp": e,
                 "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None,
                 "Net Revenue": nr
             }
