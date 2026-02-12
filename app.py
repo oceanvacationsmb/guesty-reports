@@ -21,7 +21,7 @@ def get_guesty_token():
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     try:
-        # Added a tiny sleep to prevent hitting rate limits during refreshes
+        # Prevent rapid-fire refreshes that cause 429 errors
         time.sleep(1) 
         r = requests.post(url, data=payload, headers=headers, timeout=15)
         
@@ -46,8 +46,7 @@ def fetch_master_data(month, year):
     
     try:
         # Get Owners
-        owners_res = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=15)
-        owners = owners_res.json().get('results', [])
+        owners = requests.get("https://open-api.guesty.com/v1/owners", headers=headers, timeout=15).json().get('results', [])
         
         # Get Reservations
         res_filter = json.dumps([
@@ -75,7 +74,6 @@ with st.sidebar:
     st.header("Settlement Period")
     m = st.selectbox("Month", range(1, 13), index=datetime.now().month - 1)
     y = st.number_input("Year", value=2026)
-    st.info("Data is pulled directly from Guesty.")
 
 owners_list, res_list, exp_list = fetch_master_data(m, y)
 
@@ -95,10 +93,10 @@ if owners_list:
                 mgmt = money.get('commission', 0)
                 cln = money.get('cleaningFee', 0)
                 
-                # Check for res-level expenses
+                # Check for reservation-level manual expenses
                 res_exp = sum(c.get('amount', 0) for c in money.get('extraCharges', []) if "expense" in str(c.get('description', '')).lower())
                 
-                # Fee Logic
+                # Logic for Eran Web Fee (1% of accommodation)
                 is_eran = "ERAN" in selected_owner_name.upper()
                 src = res.get('source', '').lower()
                 web_f = (acc * 0.01) if (is_eran and "engine" in src) else 0
@@ -118,6 +116,7 @@ if owners_list:
             st.header(f"Financial Summary: {selected_owner_name}")
             c1, c2, c3, c4 = st.columns(4)
             
+            # Sum of external property invoices
             listing_exp = sum(e.get('amount', 0) for e in exp_list if e.get('listingId') in assigned_ids)
             total_all_exp = df['Expenses'].sum() + listing_exp
 
@@ -127,8 +126,8 @@ if owners_list:
             
             with c4:
                 if is_eran:
-                    total_draft = df['Management Fee'].sum() + df['Cleaning Fee'].sum() + total_all_exp + (df['Accommodation'].sum() * 0.01)
-                    st.metric("TOTAL TO DRAFT", f"${total_draft:,.2f}")
+                    total_to_draft = df['Management Fee'].sum() + df['Cleaning Fee'].sum() + total_all_exp + (df['Accommodation'].sum() * 0.01)
+                    st.metric("TOTAL TO DRAFT", f"${total_to_draft:,.2f}")
                 else:
                     final_pay = df['Net Income'].sum() - df['Cleaning Fee'].sum() - listing_exp
                     st.metric("NET PAYOUT", f"${final_pay:,.2f}")
