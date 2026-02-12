@@ -82,7 +82,7 @@ with st.sidebar:
             st.rerun()
 
 # --- 4. CALCULATIONS ---
-token = get_guest_token(c_id, c_secret)
+token = get_guesty_token(c_id, c_secret)
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
 rows = []
@@ -138,11 +138,11 @@ for r in source_data:
         "Invoice": f"https://app.guesty.com/reservations/{res_id}"
     }
     
-    # NEW CALCULATION: Gross Revenue - Commission - Expenses - Cleaning
+    # REVERTED LOGIC
     if conf['type'] == "Draft":
         row["Net Payout"] = (comm + clean + exp)
     else:
-        row["Net Payout"] = (fare - comm - exp - clean)
+        row["Net Payout"] = (fare + clean)
         
     rows.append(row)
 
@@ -161,8 +161,7 @@ with c5:
         final_val = (t_comm + t_cln + t_exp)
         st.metric("TOTAL TO DRAFT", f"${final_val:,.2f}")
     else:
-        # Applying subtraction logic to summary metric
-        final_val = (t_fare - t_comm - t_exp - t_cln)
+        final_val = (t_fare + t_cln)
         st.metric("NET PAYOUT", f"${final_val:,.2f}")
 
 st.divider()
