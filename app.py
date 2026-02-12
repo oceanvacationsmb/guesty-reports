@@ -34,7 +34,8 @@ st.set_page_config(page_title="PMC Statement", layout="wide")
 
 with st.sidebar:
     st.header("📊 View Report")
-    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()), key='active_owner_sb')
+    # Using the sidebar to set the active owner
+    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()), key='active_owner')
     
     st.divider()
     st.header("📅 Select Period")
@@ -82,7 +83,7 @@ with st.sidebar:
             st.rerun()
 
 # --- 4. CALCULATIONS ---
-token = get_guest_token(c_id, c_secret)
+token = get_guesty_token(c_id, c_secret)
 conf = st.session_state.owner_db[active_owner]
 owner_pct = conf['pct']
 rows = []
@@ -100,7 +101,7 @@ else:
     source_data = get_mimic_reservations()
     status_msg = f"Source: MIMIC ({owner_pct:.0f}%) Mode | Style: {conf['type']}"
 
-# --- 5. RENDER HEADERS ---
+# --- 5. CENTERED YELLOW HEADERS ---
 st.markdown(f"""
     <div style="text-align: center;">
         <h1 style="margin-bottom: 0;">PMC Statement</h1>
@@ -137,7 +138,7 @@ for r in source_data:
 
 df = pd.DataFrame(rows)
 
-# --- 6. METRICS ---
+# --- 6. METRICS & TABLE ---
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
@@ -148,18 +149,8 @@ with c4:
 
 st.divider()
 
-# --- 7. TABLE ALIGNMENT & FORMATTING ---
 order = ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"] if conf['type'] == "Draft" else ["ID", "Check-in/Out", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"]
-
-# Force currency format and right alignment for all money columns
-config = {
-    col: st.column_config.NumberColumn(
-        format="$%,.2f",
-        help=f"Total {col}",
-        width="medium"
-    ) for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]
-}
+config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
 config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
-# Streamlit dataframes naturally right-align NumberColumns. 
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
