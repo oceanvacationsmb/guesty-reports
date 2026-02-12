@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta
 # --- 1. DATABASE & API CACHE ---
 if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {
-        "ERAN": {"pct": 20.0, "type": "Draft"},
+        "ERAN": {"pct": 12.0, "type": "Draft"},
         "SMITH": {"pct": 15.0, "type": "Payout"},
     }
 
@@ -21,7 +21,7 @@ def get_guesty_token(cid, csec):
         return res.json().get("access_token") if res.status_code == 200 else None
     except: return None
 
-# --- 2. MIMIC RESERVATIONS (With Check-in/Out) ---
+# --- 2. MIMIC RESERVATIONS ---
 def get_mimic_reservations():
     return [
         {"ID": "RES-55421", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0},
@@ -61,7 +61,7 @@ with st.sidebar:
         edit_list = list(st.session_state.owner_db.keys())
         target_owner = st.selectbox("Edit/Delete", ["+ Add New"] + edit_list)
         name_input = st.text_input("Owner Name", value="" if target_owner == "+ Add New" else target_owner).upper().strip()
-        current_pct = st.session_state.owner_db.get(target_owner, {"pct": 20.0})["pct"]
+        current_pct = st.session_state.owner_db.get(target_owner, {"pct": 12.0})["pct"]
         current_type = st.session_state.owner_db.get(target_owner, {"type": "Draft"})["type"]
         upd_pct = st.number_input("Commission %", 0.0, 100.0, float(current_pct))
         upd_type = st.selectbox("Settlement Style", ["Draft", "Payout"], index=0 if current_type == "Draft" else 1)
@@ -85,13 +85,13 @@ with st.sidebar:
 # --- 4. CALCULATIONS ---
 token = get_guesty_token(c_id, c_secret)
 conf = st.session_state.owner_db[active_owner]
+owner_pct = conf['pct']
 rows = []
 t_fare = t_comm = t_exp = t_cln = 0
 
 if token:
     res_url = "https://open-api.guesty.com/v1/reservations"
     headers = {"Authorization": f"Bearer {token}"}
-    # Added checkOut to fields
     params = {"limit": 50, "fields": "confirmationCode money checkIn checkOut", 
               "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'}
     res = requests.get(res_url, headers=headers, params=params)
@@ -99,21 +99,20 @@ if token:
     data_type = "LIVE API"
 else:
     source_data = get_mimic_reservations()
-    data_type = "MIMIC"
+    data_type = f"MIMIC ({owner_pct:.0f}%)"
 
 for r in source_data:
     if token:
         money = r.get("money", {})
         fare, clean, exp = float(money.get("fare", 0)), float(money.get("cleaningFee", 0)), 0.0
         res_id = r.get("confirmationCode")
-        # Format: Feb 01 - Feb 05
         date_display = f"{r.get('checkIn')[5:10]} / {r.get('checkOut')[5:10]}"
     else:
         fare, clean, exp = r['Fare'], r['Clean'], r['Exp']
         res_id = r['ID']
         date_display = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
 
-    comm = round(fare * (conf['pct'] / 100), 2)
+    comm = round(fare * (owner_pct / 100), 2)
     t_fare, t_comm, t_cln, t_exp = t_fare + fare, t_comm + comm, t_cln + clean, t_exp + exp
 
     row = {"ID": res_id, "Check-in/Out": date_display, "Accommodation": fare, "Commission": comm, "Expenses": exp, "Invoice": f"https://app.guesty.com/reservations/{res_id}"}
@@ -126,12 +125,13 @@ for r in source_data:
 df = pd.DataFrame(rows)
 
 # --- 5. RENDER ---
-st.header(f"Settlement Report: {active_owner} ({conf['pct']}%)")
-st.caption(f"Source: {data_type} Mode")
+st.header(f"Settlement Report: {active_owner}")
+st.caption(f"Source: {data_type} Mode | Style: {conf['type']}")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
-c2.metric(f"Commission", f"${t_comm:,.2f}")
+# Dynamic Commission Label based on owner settings
+c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
 c3.metric("Total Expenses", f"${t_exp:,.2f}")
 with c4:
     total_val = (t_fare + t_cln - t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
@@ -146,4 +146,4 @@ config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
 
 if not token:
-    st.info("💡 Mimic data shown. Enter API Secret below to switch to Live Mode.")
+    st.info(f"💡 Mimic data shown for {active_owner} at {owner_pct:.0f}%. Enter API Secret to switch to Live Mode.")
