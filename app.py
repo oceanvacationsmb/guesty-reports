@@ -19,7 +19,7 @@ def get_mimic_data(owner):
         ]
     return [{"ID": "RES-301", "Prop": "MOUNTAIN LODGE", "Addr": "55 PEAK ROAD", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
 
-# --- 2. SIDEBAR (CONTROLS RESTORED) ---
+# --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("📂 NAVIGATION")
     mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
@@ -89,7 +89,7 @@ for name, settings in st.session_state.owner_db.items():
     
     all_owners_data.append({
         "OWNER": name, "TYPE": settings['type'], "REVENUE": top_rev, "PCT": settings['pct'],
-        "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, "NET": net_rev, "DRAFT": draft_amt, "ACH": ach_amt
+        "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, "NET": net_rev, "DRAFT": draft_amt, "ACH": ach_total if 'ach_total' in locals() else ach_amt
     })
     total_ov2 += o_comm
 
