@@ -3,44 +3,46 @@ import pandas as pd
 from datetime import date, timedelta
 
 # --- 1. SETUP ---
-st.set_page_config(page_title="PMC Master Suite", layout="wide")
+st.set_page_config(page_title="PMC MASTER SUITE", layout="wide")
 
 if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {
-        "ERAN": {"pct": 12.0, "type": "Draft"},
-        "SMITH": {"pct": 15.0, "type": "Payout"},
+        "ERAN": {"pct": 12.0, "type": "DRAFT"},
+        "SMITH": {"pct": 15.0, "type": "PAYOUT"},
     }
 
 def get_mimic_data(owner):
     if owner == "ERAN":
         return [
-            {"ID": "RES-101", "Prop": "Sunset Villa", "Addr": "742 Evergreen Terrace", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1200.0, "Cln": 150.0, "Exp": 25.0},
-            {"ID": "RES-201", "Prop": "Beach House", "Addr": "123 Ocean Drive", "In": date(2026, 2, 5), "Out": date(2026, 2, 8), "Fare": 2500.0, "Cln": 200.0, "Exp": 150.0}
+            {"ID": "RES-101", "Prop": "SUNSET VILLA", "Addr": "742 EVERGREEN TERRACE", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1200.0, "Cln": 150.0, "Exp": 25.0},
+            {"ID": "RES-201", "Prop": "BEACH HOUSE", "Addr": "123 OCEAN DRIVE", "In": date(2026, 2, 5), "Out": date(2026, 2, 8), "Fare": 2500.0, "Cln": 200.0, "Exp": 150.0}
         ]
-    return [{"ID": "RES-301", "Prop": "Mountain Lodge", "Addr": "55 Peak Road", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
+    return [{"ID": "RES-301", "Prop": "MOUNTAIN LODGE", "Addr": "55 PEAK ROAD", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
 
-# --- 2. SIDEBAR ---
+# --- 2. SIDEBAR (ALL CAPS) ---
 with st.sidebar:
-    st.header("📂 Navigation")
-    mode = st.radio("Select Report Type", ["Owner Statements", "Tax Report", "PMC REPORT"], index=0)
+    st.header("📂 NAVIGATION")
+    mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
     
     st.divider()
-    active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
+    active_owner = st.selectbox("SWITCH ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
     conf = st.session_state.owner_db[active_owner]
     
     st.divider()
-    st.header("📅 Select Period")
-    report_type = st.selectbox("Context", ["By Month", "Full Year", "YTD", "Between Dates"], index=0)
+    st.header("📅 SELECT PERIOD")
+    report_type = st.selectbox("CONTEXT", ["BY MONTH", "FULL YEAR", "YTD", "BETWEEN DATES"], index=0)
+    
+    # Persistent Date Logic
     today, start_date, end_date = date.today(), date(2026, 2, 1), date(2026, 2, 28)
 
     st.divider()
-    with st.expander("👤 Owner Management"):
-        target = st.selectbox("Edit/Delete", ["+ Add New"] + list(st.session_state.owner_db.keys()))
-        curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "Draft"})
-        n_name = st.text_input("Name", value="" if target == "+ Add New" else target).upper().strip()
-        n_pct = st.number_input("Comm %", 0.0, 100.0, float(curr["pct"]))
-        n_style = st.selectbox("Style", ["Draft", "Payout"], index=0 if curr["type"] == "Draft" else 1)
-        if st.button("💾 Save Settings"):
+    with st.expander("👤 OWNER MANAGEMENT"):
+        target = st.selectbox("EDIT/DELETE", ["+ ADD NEW"] + list(st.session_state.owner_db.keys()))
+        curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "DRAFT"})
+        n_name = st.text_input("NAME", value="" if target == "+ ADD NEW" else target).upper().strip()
+        n_pct = st.number_input("COMM %", 0.0, 100.0, float(curr["pct"]))
+        n_style = st.selectbox("STYLE", ["DRAFT", "PAYOUT"], index=0 if curr["type"] == "DRAFT" else 1)
+        if st.button("💾 SAVE SETTINGS"):
             st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_style}
             st.rerun()
 
@@ -55,38 +57,38 @@ for name, settings in st.session_state.owner_db.items():
         o_comm += round(f * (settings['pct'] / 100), 2)
         o_cln += c; o_exp += e; o_fare += f
     
-    is_draft = settings['type'] == "Draft"
+    is_draft = settings['type'] == "DRAFT"
     top_revenue = (o_fare + o_cln) if is_draft else o_fare
     net_revenue = o_fare - (o_cln if is_draft else 0) - o_comm - o_exp
     draft_total = (o_comm + o_cln + o_exp) if is_draft else 0
     ach_total = net_revenue if not is_draft else 0
     
     all_owners_data.append({
-        "Owner": name, "Type": settings['type'], "Revenue": top_revenue, "Pct": settings['pct'],
-        "Comm": o_comm, "Exp": o_exp, "Cln": o_cln, "Net": net_revenue, "Draft": draft_total, "ACH": ach_total
+        "OWNER": name, "TYPE": settings['type'], "REVENUE": top_revenue, "PCT": settings['pct'],
+        "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, "NET": net_revenue, "DRAFT": draft_total, "ACH": ach_total
     })
     total_ov2 += o_comm
 
-# --- 4. MAIN CONTENT ---
-if mode == "Owner Statements":
-    st.markdown(f"<div style='text-align: center;'><h1>Owner Statement</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} to {end_date}</p></div>", unsafe_allow_html=True)
+# --- 4. MAIN CONTENT (ALL CAPS) ---
+if mode == "OWNER STATEMENTS":
+    st.markdown(f"<div style='text-align: center;'><h1>OWNER STATEMENT</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} TO {end_date}</p></div>", unsafe_allow_html=True)
     
-    s = next(item for item in all_owners_data if item["Owner"] == active_owner)
+    s = next(item for item in all_owners_data if item["OWNER"] == active_owner)
     
-    if conf['type'] == "Draft":
+    if conf['type'] == "DRAFT":
         m1, m2, m3, m4, m5, m6 = st.columns(6)
-        m1.metric("Gross Payout", f"${s['Revenue']:,.2f}")
-        m2.metric("Total Cleaning", f"${s['Cln']:,.2f}")
-        m3.metric(f"PMC Comm ({s['Pct']}%)", f"${s['Comm']:,.2f}")
-        m4.metric("Expensed", f"${s['Exp']:,.2f}")
-        m5.metric("Net Revenue", f"${s['Net']:,.2f}")
-        m6.metric("🏦 DRAFT FROM OWNER", f"${s['Draft']:,.2f}", delta_color="inverse")
+        m1.metric("GROSS PAYOUT", f"${s['REVENUE']:,.2f}")
+        m2.metric("TOTAL CLEANING", f"${s['CLN']:,.2f}")
+        m3.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
+        m4.metric("EXPENSED", f"${s['EXP']:,.2f}")
+        m5.metric("NET REVENUE", f"${s['NET']:,.2f}")
+        m6.metric("🏦 DRAFT FROM OWNER", f"${s['DRAFT']:,.2f}")
     else:
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("Accommodation", f"${s['Revenue']:,.2f}")
-        m2.metric(f"PMC Comm ({s['Pct']}%)", f"${s['Comm']:,.2f}")
-        m3.metric("Expensed", f"${s['Exp']:,.2f}")
-        m4.metric("Net Revenue", f"${s['Net']:,.2f}")
+        m1.metric("ACCOMMODATION", f"${s['REVENUE']:,.2f}")
+        m2.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
+        m3.metric("EXPENSED", f"${s['EXP']:,.2f}")
+        m4.metric("NET REVENUE", f"${s['NET']:,.2f}")
         m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}")
 
     st.divider()
@@ -99,32 +101,27 @@ if mode == "Owner Statements":
         for _, r in sub.iterrows():
             f, c, e = r['Fare'], r['Cln'], r['Exp']
             cm = round(f * (conf['pct'] / 100), 2)
-            top_line = (f + c) if conf['type'] == "Draft" else f
-            nr = f - (c if conf['type'] == "Draft" else 0) - cm - e
+            top_line = (f + c) if conf['type'] == "DRAFT" else f
+            nr = f - (c if conf['type'] == "DRAFT" else 0) - cm - e
             stay_dates = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
-            row = {"ID": r['ID'], "Check-in/Out": stay_dates, "Rev": top_line, "Cleaning": c, "PMC Comm": cm, "Expensed": e, "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "Net Revenue": nr}
+            row = {"ID": r['ID'], "CHECK-IN/OUT": stay_dates, "REV": top_line, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "INVOICE": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "NET REVENUE": nr}
             rows.append(row)
         
-        rev_col = "Gross Payout" if conf['type'] == "Draft" else "Accommodation"
-        final_df = pd.DataFrame(rows).rename(columns={"Rev": rev_col})
+        rev_col = "GROSS PAYOUT" if conf['type'] == "DRAFT" else "ACCOMMODATION"
+        final_df = pd.DataFrame(rows).rename(columns={"REV": rev_col})
         st.dataframe(final_df, use_container_width=True, hide_index=True, column_config={
             rev_col: st.column_config.NumberColumn(format="$%.2f"),
-            "Cleaning": st.column_config.NumberColumn(format="$%.2f"),
-            "PMC Comm": st.column_config.NumberColumn(format="$%.2f"),
-            "Expensed": st.column_config.NumberColumn(format="$%.2f"),
-            "Net Revenue": st.column_config.NumberColumn(format="$%.2f"),
-            "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
-        }, column_order=["ID", "Check-in/Out", rev_col, "Cleaning", "PMC Comm", "Expensed", "Invoice", "Net Revenue"] if conf['type'] == "Draft" else ["ID", "Check-in/Out", rev_col, "PMC Comm", "Expensed", "Invoice", "Net Revenue"])
+            "CLEANING": st.column_config.NumberColumn(format="$%.2f"),
+            "PMC COMM": st.column_config.NumberColumn(format="$%.2f"),
+            "EXPENSED": st.column_config.NumberColumn(format="$%.2f"),
+            "NET REVENUE": st.column_config.NumberColumn(format="$%.2f"),
+            "INVOICE": st.column_config.LinkColumn("INVOICE", display_text="🔗 VIEW")
+        })
 
 elif mode == "PMC REPORT":
-    st.title("PMC Internal Control Report")
+    st.title("PMC INTERNAL CONTROL REPORT")
     st.metric("TRANSFER TO OV2", f"${total_ov2:,.2f}")
-    st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True, column_config={
-        "Revenue": st.column_config.NumberColumn(format="$%.2f"),
-        "Comm": st.column_config.NumberColumn(format="$%.2f"),
-        "Exp": st.column_config.NumberColumn(format="$%.2f"),
-        "Cln": st.column_config.NumberColumn(format="$%.2f"),
-        "Net": st.column_config.NumberColumn(format="$%.2f"),
-        "Draft": st.column_config.NumberColumn(format="$%.2f"),
-        "ACH": st.column_config.NumberColumn(format="$%.2f")
-    })
+    st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True)
+
+else:
+    st.title("TAX COMPLIANCE REPORT")
