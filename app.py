@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-import requests
 from datetime import date, timedelta
 
-# --- 1. SETUP & SESSION STATE ---
+# --- 1. SETUP ---
 st.set_page_config(page_title="PMC MASTER SUITE", layout="wide")
 
 if 'owner_db' not in st.session_state:
@@ -12,111 +11,139 @@ if 'owner_db' not in st.session_state:
         "SMITH": {"pct": 15.0, "type": "PAYOUT"},
     }
 
-# --- 2. API ENGINE (GUESTY) ---
-def get_guesty_token(client_id, client_secret):
-    """Fetch the Bearer token from Guesty OAuth2."""
-    url = "https://open-api.guesty.com/oauth2/token"
-    payload = {"clientId": client_id, "clientSecret": client_secret}
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        return response.json().get("access_token")
-    except Exception as e:
-        st.error(f"AUTHENTICATION FAILED: {e}")
-        return None
+def get_mimic_data(owner):
+    if owner == "ERAN":
+        return [
+            {"ID": "RES-101", "Prop": "SUNSET VILLA", "Addr": "742 EVERGREEN TERRACE", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1200.0, "Cln": 150.0, "Exp": 25.0},
+            {"ID": "RES-201", "Prop": "BEACH HOUSE", "Addr": "123 OCEAN DRIVE", "In": date(2026, 2, 5), "Out": date(2026, 2, 8), "Fare": 2500.0, "Cln": 200.0, "Exp": 150.0}
+        ]
+    return [{"ID": "RES-301", "Prop": "MOUNTAIN LODGE", "Addr": "55 PEAK ROAD", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
 
-def fetch_guesty_reservations(token, start, end):
-    """Fetch real reservations from Guesty Open API."""
-    url = "https://open-api.guesty.com/v1/reservations"
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    params = {
-        "createdAfter": start.strftime("%Y-%m-%d"),
-        "createdBefore": end.strftime("%Y-%m-%d"),
-        "limit": 100
-    }
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=15)
-        # In a real scenario, we'd map Guesty fields to our internal format
-        return response.json().get("results", [])
-    except Exception as e:
-        st.sidebar.error(f"DATA FETCH FAILED: {e}")
-        return []
-
-# --- 3. SIDEBAR CONTROLS ---
+# --- 2. SIDEBAR (CONTROLS RESTORED) ---
 with st.sidebar:
     st.header("📂 NAVIGATION")
-    mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "PMC REPORT"], index=0)
+    mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
     
     st.divider()
-    st.header("🔌 API CONNECTION")
-    c_id = st.text_input("CLIENT ID", type="password", help="Found in Guesty > Integrations > Open API")
-    c_sec = st.text_input("CLIENT SECRET", type="password")
+    active_owner = st.selectbox("SWITCH ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
+    conf = st.session_state.owner_db[active_owner]
     
-    if st.button("🔄 FETCH REAL DATA", type="primary", use_container_width=True):
-        token = get_guesty_token(c_id, c_sec)
-        if token:
-            st.session_state.api_token = token
-            st.success("CONNECTED TO GUESTY")
-            st.rerun()
-
     st.divider()
-    st.header("📅 PERIOD & OWNER")
-    active_owner = st.selectbox("ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
-    report_context = st.selectbox("CONTEXT", ["BY MONTH", "YTD", "CUSTOM"], index=0)
+    st.header("📅 SELECT PERIOD")
+    report_type = st.selectbox("CONTEXT", ["BY MONTH", "FULL YEAR", "YTD", "BETWEEN DATES"], index=0)
     
-    # Simple date logic for 2026
-    start_date, end_date = date(2026, 2, 1), date(2026, 2, 28)
-
-    with st.expander("👤 OWNER SETTINGS"):
-        target = st.selectbox("EDIT", list(st.session_state.owner_db.keys()))
-        n_pct = st.number_input("COMM %", 0.0, 100.0, float(st.session_state.owner_db[target]["pct"]))
-        if st.button("💾 SAVE"):
-            st.session_state.owner_db[target]["pct"] = n_pct
-            st.rerun()
-
-# --- 4. DATA PROCESSING ---
-# Use real API data if available, otherwise fallback to Mimic for demo
-raw_data = []
-if 'api_token' in st.session_state:
-    raw_data = fetch_guesty_reservations(st.session_state.api_token, start_date, end_date)
-
-# Fallback/Mimic Logic for testing (Matches your previous logic)
-if not raw_data:
-    if active_owner == "ERAN":
-        raw_data = [
-            {"ID": "RES-101", "Fare": 1200.0, "Cln": 150.0, "Exp": 25.0},
-            {"ID": "RES-201", "Fare": 2500.0, "Cln": 200.0, "Exp": 150.0}
-        ]
+    today = date.today()
+    if report_type == "BY MONTH":
+        c1, c2 = st.columns(2)
+        months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+        sel_month = c1.selectbox("MONTH", months, index=today.month-1)
+        sel_year = c2.selectbox("YEAR", [2026, 2025], index=0)
+        start_date = date(sel_year, months.index(sel_month)+1, 1)
+        end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    elif report_type == "BETWEEN DATES":
+        c1, c2 = st.columns(2)
+        start_date = c1.date_input("START DATE", today - timedelta(days=30))
+        end_date = c2.date_input("END DATE", today)
     else:
-        raw_data = [{"ID": "RES-301", "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
+        start_date, end_date = date(today.year, 1, 1), today
 
-# --- 5. REPORT RENDERING ---
-conf = st.session_state.owner_db[active_owner]
-is_draft = conf['type'] == "DRAFT"
+    st.divider()
+    with st.expander("👤 OWNER MANAGEMENT", expanded=False):
+        target = st.selectbox("EDIT/DELETE", ["+ ADD NEW"] + list(st.session_state.owner_db.keys()))
+        curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "DRAFT"})
+        n_name = st.text_input("NAME", value="" if target == "+ ADD NEW" else target).upper().strip()
+        n_pct = st.number_input("COMM %", 0.0, 100.0, float(curr["pct"]))
+        n_style = st.selectbox("STYLE", ["DRAFT", "PAYOUT"], index=0 if curr["type"] == "DRAFT" else 1)
+        if st.button("💾 SAVE SETTINGS"):
+            st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_style}
+            st.rerun()
 
-rows = []
-for r in raw_data:
-    f, c, e = r.get('Fare', 0), r.get('Cln', 0), r.get('Exp', 0)
-    cm = round(f * (conf['pct'] / 100), 2)
+    with st.expander("🔌 API CONNECTION", expanded=True):
+        st.text_input("CLIENT ID", value="0oaszuo22iOg...", type="password")
+        if st.button("🔄 SAVE & RUN", type="primary", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+# --- 3. CALCULATION ENGINE ---
+all_owners_data = []
+total_ov2 = 0
+for name, settings in st.session_state.owner_db.items():
+    owner_data = get_mimic_data(name)
+    o_comm, o_cln, o_exp, o_fare = 0, 0, 0, 0
+    for r in owner_data:
+        f, c, e = r['Fare'], r['Cln'], r['Exp']
+        o_comm += round(f * (settings['pct'] / 100), 2)
+        o_cln += c; o_exp += e; o_fare += f
     
+    is_draft = settings['type'] == "DRAFT"
     if is_draft:
-        top_rev = f + c
-        net_rev = top_rev - c - cm - e # GROSS - CLN - PMC - EXP
-        row = {"ID": r['ID'], "GROSS PAYOUT": top_rev, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "NET REVENUE": net_rev}
+        top_rev = o_fare + o_cln
+        net_rev = top_rev - o_cln - o_comm - o_exp
+        draft_amt = o_comm + o_cln + o_exp
+        ach_amt = 0
     else:
-        net_rev = f - cm - e # ACC - PMC - EXP
-        row = {"ID": r['ID'], "ACCOMMODATION": f, "PMC COMM": cm, "EXPENSED": e, "NET REVENUE": net_rev}
-    rows.append(row)
+        top_rev = o_fare
+        net_rev = o_fare - o_comm - o_exp
+        draft_amt = 0
+        ach_amt = net_rev
+    
+    all_owners_data.append({
+        "OWNER": name, "TYPE": settings['type'], "REVENUE": top_rev, "PCT": settings['pct'],
+        "COMM": o_comm, "EXP": o_exp, "CLN": o_cln, "NET": net_rev, "DRAFT": draft_amt, "ACH": ach_amt
+    })
+    total_ov2 += o_comm
 
-df = pd.DataFrame(rows)
+# --- 4. MAIN CONTENT ---
+if mode == "OWNER STATEMENTS":
+    st.markdown(f"<div style='text-align: center;'><h1>OWNER STATEMENT</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} TO {end_date}</p></div>", unsafe_allow_html=True)
+    
+    s = next(item for item in all_owners_data if item["OWNER"] == active_owner)
+    
+    if conf['type'] == "DRAFT":
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("GROSS PAYOUT", f"${s['REVENUE']:,.2f}")
+        m2.metric("TOTAL CLEANING", f"${s['CLN']:,.2f}")
+        m3.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
+        m4.metric("EXPENSED", f"${s['EXP']:,.2f}")
+        m5.metric("NET REVENUE", f"${s['NET']:,.2f}")
+        m6.metric("🏦 DRAFT FROM OWNER", f"${s['DRAFT']:,.2f}")
+    else:
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("ACCOMMODATION", f"${s['REVENUE']:,.2f}")
+        m2.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
+        m3.metric("EXPENSED", f"${s['EXP']:,.2f}")
+        m4.metric("NET REVENUE", f"${s['NET']:,.2f}")
+        m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}")
 
-# Display Metrics
-st.title(f"OWNER STATEMENT: {active_owner}")
-m1, m2, m3, m4 = st.columns(4)
-total_rev = df[df.columns[1]].sum() # Second column is always the top-line revenue
-m1.metric("TOTAL REVENUE", f"${total_rev:,.2f}")
-m2.metric("TOTAL COMM", f"${df['PMC COMM'].sum():,.2f}")
-m3.metric("TOTAL EXPENSES", f"${df['EXPENSED'].sum():,.2f}")
-m4.metric("NET TO OWNER", f"${df['NET REVENUE'].sum():,.2f}", delta_color="normal")
+    st.divider()
 
-st.divider()
-st.dataframe(df, use_container_width=True, hide_index=True)
+    df_p = pd.DataFrame(get_mimic_data(active_owner))
+    for addr in df_p["Addr"].unique():
+        sub = df_p[df_p["Addr"] == addr]
+        st.markdown(f"#### 🏠 {sub['Prop'].iloc[0]} \n *{addr}*")
+        rows = []
+        for _, r in sub.iterrows():
+            f, c, e = r['Fare'], r['Cln'], r['Exp']
+            cm = round(f * (conf['pct'] / 100), 2)
+            if conf['type'] == "DRAFT":
+                gp = f + c
+                nr = gp - c - cm - e
+                row = {"ID": r['ID'], "STAY": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", "GROSS PAYOUT": gp, "CLEANING": c, "PMC COMM": cm, "EXPENSED": e, "NET REVENUE": nr}
+            else:
+                nr = f - cm - e
+                row = {"ID": r['ID'], "STAY": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", "ACCOMMODATION": f, "PMC COMM": cm, "EXPENSED": e, "NET REVENUE": nr}
+            rows.append(row)
+        
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={
+            "GROSS PAYOUT": st.column_config.NumberColumn(format="$%.2f"),
+            "ACCOMMODATION": st.column_config.NumberColumn(format="$%.2f"),
+            "CLEANING": st.column_config.NumberColumn(format="$%.2f"),
+            "PMC COMM": st.column_config.NumberColumn(format="$%.2f"),
+            "EXPENSED": st.column_config.NumberColumn(format="$%.2f"),
+            "NET REVENUE": st.column_config.NumberColumn(format="$%.2f")
+        })
+
+elif mode == "PMC REPORT":
+    st.title("PMC INTERNAL CONTROL REPORT")
+    st.metric("TRANSFER TO OV2", f"${total_ov2:,.2f}")
+    st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True)
