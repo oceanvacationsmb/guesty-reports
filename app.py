@@ -25,7 +25,7 @@ with st.sidebar:
     mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
     
     st.divider()
-    active_owner = st.selectbox("SWITCH ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
+    active_owner = st.selectbox("OWNERS", sorted(st.session_state.owner_db.keys()))
     conf = st.session_state.owner_db[active_owner]
     
     st.divider()
