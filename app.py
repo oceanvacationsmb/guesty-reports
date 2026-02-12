@@ -21,9 +21,17 @@ def get_guesty_token(cid, csec):
         return res.json().get("access_token") if res.status_code == 200 else None
     except: return None
 
-# --- 2. DASHBOARD UI ---
-st.set_page_config(page_title="Owner Portal", layout="wide")
-st.title("🛡️ Guesty Automated Settlement Dashboard")
+# --- 2. MIMIC RESERVATIONS ---
+def get_mimic_reservations():
+    return [
+        {"ID": "RES-55421", "Date": date(2026, 2, 1), "Fare": 1200.0, "Clean": 150.0, "Exp": 25.0},
+        {"ID": "RES-55429", "Date": date(2026, 2, 10), "Fare": 850.50, "Clean": 100.0, "Exp": 0.0},
+        {"ID": "RES-55435", "Date": date(2026, 2, 18), "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10}
+    ]
+
+# --- 3. DASHBOARD UI ---
+st.set_page_config(page_title="PMC Statement Tool", layout="wide")
+st.title("🛡️ PMC Statement Tool")
 
 with st.sidebar:
     st.header("📊 View Report")
@@ -40,19 +48,12 @@ with st.sidebar:
                        "July", "August", "September", "October", "November", "December"]
         sel_month = st.selectbox("Select Month", month_names, index=today.month-1)
         month_num = month_names.index(sel_month) + 1
-        start_date = date(sel_year, month_num, 1)
-        if month_num == 12: end_date = date(sel_year, 12, 31)
-        else: end_date = date(sel_year, month_num + 1, 1)
+        start_date, end_date = date(sel_year, month_num, 1), date(sel_year, month_num, 28)
     elif report_type == "Date Range":
         start_date = st.date_input("Start Date", date(today.year, today.month, 1))
         end_date = st.date_input("End Date", today)
-    elif report_type == "Year to Date (YTD)":
-        start_date = date(today.year, 1, 1)
-        end_date = today
-    else: # Full Year
-        sel_year = st.selectbox("Select Year", [2026, 2025, 2024], index=0)
-        start_date = date(sel_year, 1, 1)
-        end_date = date(sel_year, 12, 31)
+    else:
+        start_date, end_date = date(today.year, 1, 1), today
 
     st.divider()
     st.header("⚙️ Settings")
@@ -81,7 +82,7 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
 
-# --- 3. DATA PROCESSING ---
+# --- 4. CALCULATIONS ---
 token = get_guesty_token(c_id, c_secret)
 conf = st.session_state.owner_db[active_owner]
 rows = []
@@ -90,67 +91,55 @@ t_fare = t_comm = t_exp = t_cln = 0
 if token:
     res_url = "https://open-api.guesty.com/v1/reservations"
     headers = {"Authorization": f"Bearer {token}"}
-    params = {
-        "limit": 100, 
-        "fields": "confirmationCode money checkIn",
-        "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'
-    }
+    params = {"limit": 50, "fields": "confirmationCode money checkIn", 
+              "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'}
     res = requests.get(res_url, headers=headers, params=params)
-    raw_api_data = res.json().get("results", []) if res.status_code == 200 else []
+    source_data = res.json().get("results", []) if res.status_code == 200 else []
+    data_type = "LIVE API"
+else:
+    source_data = get_mimic_reservations()
+    data_type = "MIMIC"
 
-    for r in raw_api_data:
+for r in source_data:
+    if token:
         money = r.get("money", {})
-        fare = float(money.get("fare", 0))
-        clean = float(money.get("cleaningFee", 0))
-        comm = round(fare * (conf['pct'] / 100), 2)
-        t_fare += fare
-        t_comm += comm
-        t_cln += clean
-        row = {"ID": r.get("confirmationCode"), "Date": r.get("checkIn")[:10], "Accommodation": fare, "Commission": comm, "Expenses": 0.0, "Invoice": f"https://app.guesty.com/reservations/{r.get('confirmationCode')}"}
-        if conf['type'] == "Draft":
-            row["Net Payout"], row["Cleaning"] = fare + clean, clean
-        else:
-            row["Net Payout"] = fare - comm
-        rows.append(row)
+        fare, clean, exp = float(money.get("fare", 0)), float(money.get("cleaningFee", 0)), 0.0
+        res_id, res_date = r.get("confirmationCode"), r.get("checkIn")[:10]
+    else:
+        fare, clean, exp = r['Fare'], r['Clean'], r['Exp']
+        res_id, res_date = r['ID'], r['Date'].strftime("%Y-%m-%d")
 
-# --- 4. RENDER SUMMARY & TABLE REGARDLESS ---
+    comm = round(fare * (conf['pct'] / 100), 2)
+    t_fare, t_comm, t_cln, t_exp = t_fare + fare, t_comm + comm, t_cln + clean, t_exp + exp
+
+    row = {"ID": res_id, "Date": res_date, "Accommodation": fare, "Commission": comm, "Expenses": exp, "Invoice": f"https://app.guesty.com/reservations/{res_id}"}
+    if conf['type'] == "Draft":
+        row["Net Payout"], row["Cleaning"] = (fare + clean - exp), clean
+    else:
+        row["Net Payout"] = (fare - comm - exp)
+    rows.append(row)
+
+df = pd.DataFrame(rows)
+
+# --- 5. RENDER ---
 st.header(f"Settlement Report: {active_owner} ({conf['pct']}%)")
-st.caption(f"Period: {start_date} to {end_date} | Type: {conf['type']}")
+st.caption(f"Source: {data_type} Mode")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission", f"${t_comm:,.2f}")
-c3.metric("Total Expenses", f"$0.00")
+c3.metric("Total Expenses", f"${t_exp:,.2f}")
 with c4:
-    total_val = (t_fare + t_cln) if conf['type'] == "Draft" else (t_fare - t_comm)
+    total_val = (t_fare + t_cln - t_exp) if conf['type'] == "Draft" else (t_fare - t_comm - t_exp)
     st.metric("TOTAL TO DRAFT" if conf['type'] == "Draft" else "NET PAYOUT", f"${total_val:,.2f}")
 
 st.divider()
 
-# Create Placeholder DataFrame if empty to "Show Table Regardless"
-if not rows:
-    if conf['type'] == "Draft":
-        df = pd.DataFrame(columns=["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"])
-    else:
-        df = pd.DataFrame(columns=["ID", "Date", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"])
-else:
-    df = pd.DataFrame(rows)
-
 order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"] if conf['type'] == "Draft" else ["ID", "Date", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"]
-config = {
-    "Net Payout": st.column_config.NumberColumn(format="$%,.2f"),
-    "Accommodation": st.column_config.NumberColumn(format="$%,.2f"),
-    "Cleaning": st.column_config.NumberColumn(format="$%,.2f"),
-    "Commission": st.column_config.NumberColumn(format="$%,.2f"),
-    "Expenses": st.column_config.NumberColumn(format="$%,.2f"),
-    "Invoice": st.column_config.LinkColumn(display_text="🔗 View")
-}
+config = {col: st.column_config.NumberColumn(format="$%,.2f") for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses"]}
+config["Invoice"] = st.column_config.LinkColumn(display_text="🔗 View")
 
 st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
 
 if not token:
-    st.info("💡 Table is in preview mode. Enter API Secret to load live reservations.")
-elif df.empty:
-    st.warning("No reservations found for this selected period.")
-else:
-    st.download_button("📥 Download Statement", df.to_csv(index=False), file_name=f"{active_owner}_Report.csv", use_container_width=True)
+    st.info("💡 Mimic data shown. Enter API Secret below to switch to Live Mode.")
