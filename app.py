@@ -11,14 +11,6 @@ if 'owner_db' not in st.session_state:
         "SMITH": {"pct": 15.0, "type": "Payout"},
     }
 
-# Mock Tax Rates (Example: Florida/Miami style breakdown)
-TAX_RATES = {
-    "State": 0.06,   # 6%
-    "County": 0.01,  # 1%
-    "City": 0.03,    # 3%
-    "Local/TDT": 0.03 # 3% (Tourist Development Tax)
-}
-
 def get_mimic_data(owner):
     if owner == "ERAN":
         return [
@@ -38,51 +30,101 @@ with st.sidebar:
     
     st.divider()
     st.header("📅 Select Period")
-    # Date logic for context
+    report_type = st.selectbox("Context", ["By Month", "Full Year", "YTD", "Between Dates"], index=0)
     today, start_date, end_date = date.today(), date(2026, 2, 1), date(2026, 2, 28)
 
+    st.divider()
+    with st.expander("👤 Owner Management"):
+        target = st.selectbox("Edit/Delete", ["+ Add New"] + list(st.session_state.owner_db.keys()))
+        curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "Draft"})
+        n_name = st.text_input("Name", value="" if target == "+ Add New" else target).upper().strip()
+        n_pct = st.number_input("Comm %", 0.0, 100.0, float(curr["pct"]))
+        n_style = st.selectbox("Style", ["Draft", "Payout"], index=0 if curr["type"] == "Draft" else 1)
+        if st.button("💾 Save Settings"):
+            st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_style}
+            st.rerun()
+
 # --- 3. CALCULATION ENGINE ---
-owner_data = get_mimic_data(active_owner)
-total_accommodation = sum(r['Fare'] for r in owner_data)
-
-tax_table_data = []
-total_tax_due = 0
-
-for jurisdiction, rate in TAX_RATES.items():
-    amount = total_accommodation * rate
-    total_tax_due += amount
-    tax_table_data.append({
-        "Jurisdiction": jurisdiction,
-        "Rate": f"{rate*100:.1f}%",
-        "Total Collected": amount,
-        "Pay To": f"Department of Revenue ({jurisdiction} Office)",
-        "Frequency": "Monthly"
+all_owners_data = []
+total_ov2 = 0
+for name, settings in st.session_state.owner_db.items():
+    owner_data = get_mimic_data(name)
+    o_comm, o_cln, o_exp, o_fare = 0, 0, 0, 0
+    for r in owner_data:
+        f, c, e = r['Fare'], r['Cln'], r['Exp']
+        o_comm += round(f * (settings['pct'] / 100), 2)
+        o_cln += c; o_exp += e; o_fare += f
+    
+    is_draft = settings['type'] == "Draft"
+    top_revenue = (o_fare + o_cln) if is_draft else o_fare
+    net_revenue = o_fare - (o_cln if is_draft else 0) - o_comm - o_exp
+    draft_total = (o_comm + o_cln + o_exp) if is_draft else 0
+    ach_total = net_revenue if not is_draft else 0
+    
+    all_owners_data.append({
+        "Owner": name, "Type": settings['type'], "Revenue": top_revenue, "Pct": settings['pct'],
+        "Comm": o_comm, "Exp": o_exp, "Cln": o_cln, "Net": net_revenue, "Draft": draft_total, "ACH": ach_total
     })
+    total_ov2 += o_comm
 
 # --- 4. MAIN CONTENT ---
-if mode == "Tax Report":
-    st.markdown(f"<div style='text-align: center;'><h1>Tax Compliance Report</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>Period: {start_date} to {end_date}</p></div>", unsafe_allow_html=True)
+if mode == "Owner Statements":
+    st.markdown(f"<div style='text-align: center;'><h1>Owner Statement</h1><h2 style='color:#FFD700;'>{active_owner}</h2><p>{start_date} to {end_date}</p></div>", unsafe_allow_html=True)
     
-    # Tax Summary Metrics
-    t1, t2, t3 = st.columns(3)
-    t1.metric("Total Accommodation", f"${total_accommodation:,.2f}")
-    t2.metric("Combined Tax Rate", f"{sum(TAX_RATES.values())*100:.1f}%")
-    t3.metric("Total Tax Due", f"${total_tax_due:,.2f}", delta="Ready for Filing", delta_color="off")
+    s = next(item for item in all_owners_data if item["Owner"] == active_owner)
     
-    st.divider()
-    
-    st.subheader("📌 Tax Breakdown & Payment Instructions")
-    st.dataframe(pd.DataFrame(tax_table_data), use_container_width=True, hide_index=True, column_config={
-        "Total Collected": st.column_config.NumberColumn(format="$%.2f"),
-        "Pay To": st.column_config.TextColumn("Payment Entity")
-    })
-    
-    st.info(f"💡 This report is based on the **${total_accommodation:,.2f}** in accommodation revenue reported for {active_owner} during this period.")
+    if conf['type'] == "Draft":
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("Gross Payout", f"${s['Revenue']:,.2f}")
+        m2.metric("Total Cleaning", f"${s['Cln']:,.2f}")
+        m3.metric(f"PMC Comm ({s['Pct']}%)", f"${s['Comm']:,.2f}")
+        m4.metric("Expensed", f"${s['Exp']:,.2f}")
+        m5.metric("Net Revenue", f"${s['Net']:,.2f}")
+        m6.metric("🏦 DRAFT FROM OWNER", f"${s['Draft']:,.2f}", delta_color="inverse")
+    else:
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Accommodation", f"${s['Revenue']:,.2f}")
+        m2.metric(f"PMC Comm ({s['Pct']}%)", f"${s['Comm']:,.2f}")
+        m3.metric("Expensed", f"${s['Exp']:,.2f}")
+        m4.metric("Net Revenue", f"${s['Net']:,.2f}")
+        m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}")
 
-elif mode == "Owner Statements":
-    st.title("Owner Statement")
-    # (Previous Owner Statement Logic...)
+    st.divider()
+
+    df_p = pd.DataFrame(get_mimic_data(active_owner))
+    for addr in df_p["Addr"].unique():
+        sub = df_p[df_p["Addr"] == addr]
+        st.markdown(f"#### 🏠 {sub['Prop'].iloc[0]} \n *{addr}*")
+        rows = []
+        for _, r in sub.iterrows():
+            f, c, e = r['Fare'], r['Cln'], r['Exp']
+            cm = round(f * (conf['pct'] / 100), 2)
+            top_line = (f + c) if conf['type'] == "Draft" else f
+            nr = f - (c if conf['type'] == "Draft" else 0) - cm - e
+            stay_dates = f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}"
+            row = {"ID": r['ID'], "Check-in/Out": stay_dates, "Rev": top_line, "Cleaning": c, "PMC Comm": cm, "Expensed": e, "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "Net Revenue": nr}
+            rows.append(row)
+        
+        rev_col = "Gross Payout" if conf['type'] == "Draft" else "Accommodation"
+        final_df = pd.DataFrame(rows).rename(columns={"Rev": rev_col})
+        st.dataframe(final_df, use_container_width=True, hide_index=True, column_config={
+            rev_col: st.column_config.NumberColumn(format="$%.2f"),
+            "Cleaning": st.column_config.NumberColumn(format="$%.2f"),
+            "PMC Comm": st.column_config.NumberColumn(format="$%.2f"),
+            "Expensed": st.column_config.NumberColumn(format="$%.2f"),
+            "Net Revenue": st.column_config.NumberColumn(format="$%.2f"),
+            "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
+        }, column_order=["ID", "Check-in/Out", rev_col, "Cleaning", "PMC Comm", "Expensed", "Invoice", "Net Revenue"] if conf['type'] == "Draft" else ["ID", "Check-in/Out", rev_col, "PMC Comm", "Expensed", "Invoice", "Net Revenue"])
 
 elif mode == "PMC REPORT":
-    st.title("PMC Internal Control")
-    # (Previous PMC Report Logic...)
+    st.title("PMC Internal Control Report")
+    st.metric("TRANSFER TO OV2", f"${total_ov2:,.2f}")
+    st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True, column_config={
+        "Revenue": st.column_config.NumberColumn(format="$%.2f"),
+        "Comm": st.column_config.NumberColumn(format="$%.2f"),
+        "Exp": st.column_config.NumberColumn(format="$%.2f"),
+        "Cln": st.column_config.NumberColumn(format="$%.2f"),
+        "Net": st.column_config.NumberColumn(format="$%.2f"),
+        "Draft": st.column_config.NumberColumn(format="$%.2f"),
+        "ACH": st.column_config.NumberColumn(format="$%.2f")
+    })
