@@ -15,21 +15,11 @@ def get_guesty_token(cid, csec):
     url = "https://open-api.guesty.com/oauth2/token"
     payload = {"grant_type": "client_credentials", "scope": "open-api", 
                "client_id": cid.strip(), "client_secret": csec.strip()}
-    headers = {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     try:
         res = requests.post(url, data=payload, headers=headers)
         return res.json().get("access_token") if res.status_code == 200 else None
     except: return None
-
-def fetch_live_data(token):
-    url = "https://open-api.guesty.com/v1/reservations"
-    headers = {"Authorization": f"Bearer {token}"}
-    # Pulling up to 100 to ensure we cover the selected month
-    params = {"limit": 100, "fields": "confirmationCode money checkIn"}
-    try:
-        res = requests.get(url, headers=headers, params=params)
-        return res.json().get("results", [])
-    except: return []
 
 # --- 2. DASHBOARD UI ---
 st.set_page_config(page_title="Owner Portal", layout="wide")
@@ -44,21 +34,41 @@ with st.sidebar:
     st.header("📊 View Report")
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
     
-    # --- MONTH PICKER (NAME BASED) ---
-    month_names = ["January", "February", "March", "April", "May", "June", 
-                   "July", "August", "September", "October", "November", "December"]
-    current_month_idx = date.today().month - 1
-    selected_month_name = st.selectbox("Select Month", month_names, index=current_month_idx)
-    selected_month_num = month_names.index(selected_month_name) + 1
+    st.divider()
+    st.header("📅 Select Period")
+    report_type = st.selectbox("Quick Select", ["By Month", "Date Range", "Year to Date (YTD)", "Full Year"])
+    
+    today = date.today()
+    # Logic for Date Filtering
+    if report_type == "By Month":
+        month_names = ["January", "February", "March", "April", "May", "June", 
+                       "July", "August", "September", "October", "November", "December"]
+        sel_month = st.selectbox("Select Month", month_names, index=today.month-1)
+        month_num = month_names.index(sel_month) + 1
+        start_date = date(today.year, month_num, 1)
+        # Handle end of year wrap-around
+        if month_num == 12: end_date = date(today.year, 12, 31)
+        else: end_date = date(today.year, month_num + 1, 1)
+        
+    elif report_type == "Date Range":
+        start_date = st.date_input("Start Date", date(today.year, today.month, 1))
+        end_date = st.date_input("End Date", today)
+        
+    elif report_type == "Year to Date (YTD)":
+        start_date = date(today.year, 1, 1)
+        end_date = today
+        
+    else: # Full Year
+        sel_year = st.selectbox("Select Year", [today.year, today.year-1], index=0)
+        start_date = date(sel_year, 1, 1)
+        end_date = date(sel_year, 12, 31)
 
     st.divider()
     st.header("⚙️ Settings")
     with st.expander("Manage Owners"):
         edit_list = list(st.session_state.owner_db.keys())
         target_owner = st.selectbox("Edit/Delete", ["+ Add New"] + edit_list)
-        name_val = "" if target_owner == "+ Add New" else target_owner
-        name_input = st.text_input("Owner Name", value=name_val).upper().strip()
-        
+        name_input = st.text_input("Owner Name", value="" if target_owner == "+ Add New" else target_owner).upper().strip()
         current_pct = st.session_state.owner_db.get(target_owner, {"pct": 20.0})["pct"]
         current_type = st.session_state.owner_db.get(target_owner, {"type": "Draft"})["type"]
         upd_pct = st.number_input("Commission %", 0.0, 100.0, float(current_pct))
@@ -72,54 +82,57 @@ with st.sidebar:
             del st.session_state.owner_db[target_owner]
             st.rerun()
 
-# --- 3. CALCULATIONS & FILTERING ---
+# --- 3. CALCULATIONS & LIVE FETCH ---
 token = get_guesty_token(c_id, c_secret)
 
-if not token:
-    st.info("👋 Enter your Client Secret in the sidebar to sync live data.")
-else:
-    raw_api_data = fetch_live_data(token)
+if token:
+    # Pulling reservations filtering by checkIn date 
+    res_url = "https://open-api.guesty.com/v1/reservations"
+    headers = {"Authorization": f"Bearer {token}"}
+    # Guesty filter format: {"checkIn":{"$gte":"2026-01-01","$lte":"2026-01-31"}}
+    params = {
+        "limit": 100, 
+        "fields": "confirmationCode money checkIn",
+        "filters": f'{{"checkIn":{{"$gte":"{start_date}","$lte":"{end_date}"}}}}'
+    }
+    
+    res = requests.get(res_url, headers=headers, params=params)
+    raw_api_data = res.json().get("results", []) if res.status_code == 200 else []
+    
     conf = st.session_state.owner_db[active_owner]
     rows = []
     t_fare = t_comm = t_exp = t_cln = 0
 
-    for res in raw_api_data:
-        check_in_str = res.get("checkIn", "")
-        if not check_in_str: continue
+    for r in raw_api_data:
+        money = r.get("money", {})
+        fare = float(money.get("fare", 0))
+        clean = float(money.get("cleaningFee", 0))
+        comm = round(fare * (conf['pct'] / 100), 2)
         
-        # Convert Guesty date string to Python date object
-        dt_obj = datetime.strptime(check_in_str[:10], "%Y-%m-%d").date()
+        t_fare += fare
+        t_comm += comm
+        t_cln += clean
         
-        # FILTER: Only include if it matches the selected month
-        if dt_obj.month == selected_month_num:
-            money = res.get("money", {})
-            fare = float(money.get("fare", 0))
-            clean = float(money.get("cleaningFee", 0))
-            
-            comm = round(fare * (conf['pct'] / 100), 2)
-            t_fare += fare
-            t_comm += comm
-            t_cln += clean
-            
-            row = {
-                "ID": res.get("confirmationCode"), 
-                "Date": dt_obj.strftime("%b %d, %y"), 
-                "Accommodation": float(fare), 
-                "Commission": float(comm), 
-                "Expenses": 0.0, 
-                "Invoice": f"https://app.guesty.com/reservations/{res.get('confirmationCode')}"
-            }
-            if conf['type'] == "Draft":
-                row["Net Payout"] = float(fare + clean)
-                row["Cleaning"] = float(clean)
-            else:
-                row["Net Payout"] = float(fare - comm)
-            rows.append(row)
+        row = {
+            "ID": r.get("confirmationCode"),
+            "Date": r.get("checkIn")[:10],
+            "Accommodation": fare,
+            "Commission": comm,
+            "Expenses": 0.0,
+            "Invoice": f"https://app.guesty.com/reservations/{r.get('confirmationCode')}"
+        }
+        if conf['type'] == "Draft":
+            row["Net Payout"] = fare + clean
+            row["Cleaning"] = clean
+        else:
+            row["Net Payout"] = fare - comm
+        rows.append(row)
 
     df = pd.DataFrame(rows)
 
-    # --- 4. RENDER ---
-    st.header(f"{selected_month_name} Report: {active_owner} ({conf['pct']}%)")
+    # --- 4. RENDER (YOUR METRICS & TABLE) ---
+    st.header(f"Settlement Report: {active_owner} ({conf['pct']}%)")
+    st.caption(f"Showing reservations from {start_date} to {end_date}")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Gross Revenue", f"${t_fare:,.2f}")
@@ -131,20 +144,20 @@ else:
 
     st.divider()
 
-    order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"] if conf['type'] == "Draft" else ["ID", "Date", "Net Payout", "Accommodation", "Commission", "Expenses", "Invoice"]
-    
+    order = ["ID", "Date", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
     config = {
         "Net Payout": st.column_config.NumberColumn(format="$%,.2f"),
         "Accommodation": st.column_config.NumberColumn(format="$%,.2f"),
         "Cleaning": st.column_config.NumberColumn(format="$%,.2f"),
         "Commission": st.column_config.NumberColumn(format="$%,.2f"),
         "Expenses": st.column_config.NumberColumn(format="$%,.2f"),
-        "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
+        "Invoice": st.column_config.LinkColumn(display_text="🔗 View")
     }
 
     if not df.empty:
         st.dataframe(df, use_container_width=True, column_config=config, column_order=order, hide_index=True)
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(f"📥 Download {selected_month_name} CSV", data=csv, file_name=f"{active_owner}_{selected_month_name}.csv", use_container_width=True)
+        st.download_button("📥 Download Statement", df.to_csv(index=False), file_name=f"{active_owner}_Report.csv", use_container_width=True)
     else:
-        st.warning(f"No reservations found for {selected_month_name}.")
+        st.warning("No data found for this period.")
+else:
+    st.info("👋 Please enter your API Secret in the sidebar.")
