@@ -18,7 +18,7 @@ def get_mimic_reservations():
         {"ID": "RES-55435", "In": date(2026, 2, 18), "Out": date(2026, 2, 22), "Fare": 2100.75, "Clean": 180.0, "Exp": 45.10}
     ]
 
-# --- 3. SIDEBAR ---
+# --- 3. SIDEBAR (API & Settings Restored) ---
 st.set_page_config(page_title="PMC Statement", layout="wide")
 
 with st.sidebar:
@@ -27,13 +27,39 @@ with st.sidebar:
     
     st.divider()
     st.header("📅 Select Period")
-    # Date logic here...
+    report_type = st.selectbox("Quick Select", ["By Month", "Date Range", "Year to Date (YTD)", "Full Year"])
     
+    today = date.today()
+    if report_type == "By Month":
+        sel_year = st.selectbox("Select Year", [2026, 2025, 2024], index=0)
+        month_names = ["January", "February", "March", "April", "May", "June", 
+                       "July", "August", "September", "October", "November", "December"]
+        sel_month = st.selectbox("Select Month", month_names, index=today.month-1)
+        month_num = month_names.index(sel_month) + 1
+        start_date, end_date = date(sel_year, month_num, 1), date(sel_year, month_num, 28)
+    elif report_type == "Date Range":
+        start_date = st.date_input("Start Date", date(today.year, today.month, 1))
+        end_date = st.date_input("End Date", today)
+    else:
+        start_date, end_date = date(today.year, 1, 1), today
+
     st.divider()
     st.header("⚙️ Settings")
     with st.expander("Manage Owners"):
-        # Owner management logic...
-        pass
+        edit_list = list(st.session_state.owner_db.keys())
+        target_owner = st.selectbox("Edit/Delete", ["+ Add New"] + edit_list)
+        name_input = st.text_input("Owner Name", value="" if target_owner == "+ Add New" else target_owner).upper().strip()
+        conf_data = st.session_state.owner_db.get(target_owner, {"pct": 12.0, "type": "Draft"})
+        upd_pct = st.number_input("Commission %", 0.0, 100.0, float(conf_data["pct"]))
+        upd_type = st.selectbox("Settlement Style", ["Draft", "Payout"], index=0 if conf_data["type"] == "Draft" else 1)
+        
+        c_save, c_del = st.columns(2)
+        if c_save.button("💾 Save"):
+            st.session_state.owner_db[name_input] = {"pct": upd_pct, "type": upd_type}
+            st.rerun()
+        if target_owner != "+ Add New" and c_del.button("🗑️ Delete", type="primary"):
+            del st.session_state.owner_db[target_owner]
+            st.rerun()
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     with st.expander("🔌 Connection Settings"):
@@ -66,7 +92,7 @@ for r in source_data:
     t_net_payout += net_payout
 
     rows.append({
-        "Res ID": r['ID'], # UPDATED COLUMN NAME
+        "ID": r['ID'], 
         "Check-in/Out": f"{r['In'].strftime('%m/%d')} - {r['Out'].strftime('%m/%d')}", 
         "Gross Revenue": gross_rev,
         "Accommodation": fare, 
@@ -89,16 +115,26 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # --- 6. SUMMARY METRICS ---
-# Metric logic here...
+if conf['type'] == "Payout":
+    c1, c2, c4, c5 = st.columns(4)
+    c1.metric("Gross Revenue", f"${t_gross:,.2f}")
+    c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
+    c4.metric("Total Expenses", f"${t_exp:,.2f}")
+    c5.metric("NET PAYOUT", f"${t_net_payout:,.2f}")
+    order = ["ID", "Check-in/Out", "Accommodation", "Commission", "Expenses", "Invoice", "Net Payout"]
+else:
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Gross Revenue", f"${t_gross:,.2f}")
+    c2.metric(f"Commission ({owner_pct:.0f}%)", f"${t_comm:,.2f}")
+    c3.metric("Cleaning Total", f"${t_cln:,.2f}")
+    c4.metric("Total Expenses", f"${t_exp:,.2f}")
+    t_draft_amt = t_comm + t_cln + t_exp
+    c5.metric("DRAFT AMOUNT", f"${t_draft_amt:,.2f}")
+    order = ["ID", "Check-in/Out", "Gross Revenue", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
 
 st.divider()
 
 # --- 7. TABLE ---
-if conf['type'] == "Payout":
-    order = ["Res ID", "Check-in/Out", "Accommodation", "Commission", "Expenses", "Invoice", "Net Payout"]
-else:
-    order = ["Res ID", "Check-in/Out", "Gross Revenue", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice", "Net Payout"]
-
 config = {
     col: st.column_config.NumberColumn(format="$%.2f") 
     for col in ["Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Gross Revenue"]
