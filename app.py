@@ -1,9 +1,3 @@
-0oaszuo22iOg2Ik1P5d7
-
-DGl7Tm-viqsMQMccdTkChqf1mwV9kvBWld4cF-S9_uzeA9os3nJaK9sQr_Mf6SWa
-
-
-
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
@@ -31,7 +25,7 @@ with st.sidebar:
     mode = st.radio("SELECT REPORT TYPE", ["OWNER STATEMENTS", "TAX REPORT", "PMC REPORT"], index=0)
     
     st.divider()
-    active_owner = st.selectbox("OWNERS", sorted(st.session_state.owner_db.keys()))
+    active_owner = st.selectbox("SWITCH ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
     conf = st.session_state.owner_db[active_owner]
     
     st.divider()
@@ -153,6 +147,3 @@ elif mode == "PMC REPORT":
     st.title("PMC INTERNAL CONTROL REPORT")
     st.metric("TRANSFER TO OV2", f"${total_ov2:,.2f}")
     st.dataframe(pd.DataFrame(all_owners_data), use_container_width=True, hide_index=True)
-
-
-w0mMTj0UU6z-CRMlbxzayZudDaLa7O4FMInqb1AhKd8cFo_1GBe9ItCSP2QY85vV
