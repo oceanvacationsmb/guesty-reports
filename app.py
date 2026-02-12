@@ -1,4 +1,4 @@
-import streamlit as st
+motek streamlit as st
 import pandas as pd
 from datetime import datetime, date
 
@@ -71,7 +71,7 @@ for res in raw_res:
     t_cln += clean
     
     row = {
-        "MOTEK": res['ID'], 
+        "ID": res['ID'], 
         "Date": res['Dates'].strftime("%b %d, %y"), 
         "Accommodation": float(fare), 
         "Commission": float(comm), 
