@@ -33,43 +33,42 @@ with st.sidebar:
     with st.expander("⚙️ Settings: Add/Edit Owners"):
         edit_list = list(st.session_state.owner_db.keys())
         target_owner = st.selectbox("Choose Owner to Modify", ["+ Add New"] + edit_list)
-        # (Setting management logic remains the same)
+        # Settings logic remains the same...
 
 # --- 4. CALCULATIONS ---
 conf = st.session_state.owner_db[active_owner]
 raw_res = get_mock_reservations()
 rows = []
 
-# Raw totals for the "Clean Summary" cards
 t_fare = t_comm = t_exp = t_cln = 0
 
 for res in raw_res:
     fare = res['Fare']
-    comm = fare * (conf['pct'] / 100)
+    comm = round(fare * (conf['pct'] / 100), 2) # Use round to prevent long decimals
     t_fare += fare
     t_comm += comm
     t_exp += res['Exp']
     t_cln += res['Clean']
     
+    # We keep numbers as FLOAT here so the NumberColumn can format them correctly
     row = {
         "Reservation ID": res['ID'],
         "Dates (In/Out)": res['Dates'],
-        "Accommodation": fare,
-        "PMC Commission": comm
+        "Accommodation": float(fare),
+        "PMC Commission": float(comm)
     }
     if conf['type'] == "Draft":
-        row["Cleaning Fee"] = res['Clean']
+        row["Cleaning Fee"] = float(res['Clean'])
     
-    row["Expenses"] = res['Exp']
+    row["Expenses"] = float(res['Exp'])
     row["Invoice Link"] = res['Invoice']
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-# --- 5. RENDER CLEAN SUMMARY REPORT ---
+# --- 5. CLEAN SUMMARY REPORT ---
 st.header(f"Settlement Report: {active_owner}")
 
-# The "Nice and Clean" Summary Cards
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric("Total Commission", f"${t_comm:,.2f}")
@@ -85,14 +84,13 @@ with c4:
 
 st.divider()
 
-# --- 6. LOCKED TABLE CONFIGURATION ---
-# column_config right-aligns and formats. 
-# hide_index=True and selection_mode="none" makes it non-clickable.
+# --- 6. LOCKED & FORMATTED TABLE ---
+# Using specific NumberColumn configuration to fix alignment, decimals, and red warnings
 column_config = {
-    "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%,.2f"),
-    "PMC Commission": st.column_config.NumberColumn("PMC Commission", format="$%,.2f"),
-    "Cleaning Fee": st.column_config.NumberColumn("Cleaning Fee", format="$%,.2f"),
-    "Expenses": st.column_config.NumberColumn("Expenses", format="$%,.2f"),
+    "Accommodation": st.column_config.NumberColumn("$ Accommodation", format="$%.2f", width="medium"),
+    "PMC Commission": st.column_config.NumberColumn("$ PMC Commission", format="$%.2f", width="medium"),
+    "Cleaning Fee": st.column_config.NumberColumn("$ Cleaning Fee", format="$%.2f", width="medium"),
+    "Expenses": st.column_config.NumberColumn("$ Expenses", format="$%.2f", width="medium"),
     "Invoice Link": st.column_config.LinkColumn("View Invoice", display_text="🔗 View")
 }
 
@@ -101,9 +99,9 @@ st.dataframe(
     use_container_width=True, 
     column_config=column_config, 
     hide_index=True,
-    on_select="ignore" # This prevents row clicking/selection
+    on_select="ignore" # Makes table non-clickable
 )
 
-# Export (JPG-style CSV per preference)
+# Export
 csv = df.to_csv(index=False).encode('utf-8')
 st.download_button(f"📥 Download {active_owner} Statement", data=csv, file_name=f"{active_owner}_Statement.csv")
