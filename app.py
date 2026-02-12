@@ -19,7 +19,7 @@ def get_mimic_data(owner):
         ]
     return [{"ID": "RES-301", "Prop": "Mountain Lodge", "Addr": "55 Peak Road", "In": date(2026, 2, 1), "Out": date(2026, 2, 5), "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}]
 
-# --- 2. SIDEBAR (STABLE) ---
+# --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("📂 Navigation")
     mode = st.radio("Select Report Type", ["Owner Statements", "Tax Report", "PMC REPORT"], index=0)
@@ -75,7 +75,7 @@ for name, settings in st.session_state.owner_db.items():
         o_cln += c; o_exp += e; o_fare += f
     
     is_draft = settings['type'] == "Draft"
-    # Logic Update: Revenue is either Gross Payout or Accommodation
+    # Logic Update: Payout accounts completely ignore Cleaning
     top_revenue = (o_fare + o_cln) if is_draft else o_fare
     net_revenue = o_fare - (o_cln if is_draft else 0) - o_comm - o_exp
     draft_total = (o_comm + o_cln + o_exp) if is_draft else 0
@@ -95,17 +95,17 @@ if mode == "Owner Statements":
     s = next(item for item in all_owners_data if item["Owner"] == active_owner)
     m1, m2, m3, m4, m5 = st.columns(5)
     
-    # Labeling based on your request
+    # Labeling for Summary Row
     rev_label = "Gross Payout" if conf['type'] == "Draft" else "Accommodation"
     m1.metric(rev_label, f"${s['Revenue']:,.2f}")
-    m2.metric("Total Comm", f"${s['Comm']:,.2f}")
-    m3.metric("Total Expenses", f"${s['Exp']:,.2f}")
+    m2.metric("PMC Commission", f"${s['Comm']:,.2f}")
+    m3.metric("Expenses", f"${s['Exp']:,.2f}")
     m4.metric("Net Revenue", f"${s['Net']:,.2f}")
     
     if conf['type'] == "Draft":
-        m5.metric("🏦 DRAFT FROM OWNER", f"${s['Draft']:,.2f}", delta="Comm+Cln+Exp", delta_color="inverse")
+        m5.metric("🏦 DRAFT FROM OWNER", f"${s['Draft']:,.2f}")
     else:
-        m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}", delta="Net Revenue")
+        m5.metric("💸 ACH TO OWNER", f"${s['ACH']:,.2f}")
 
     st.divider()
 
@@ -121,20 +121,27 @@ if mode == "Owner Statements":
             top_line = (f + c) if conf['type'] == "Draft" else f
             nr = f - (c if conf['type'] == "Draft" else 0) - cm - e
             
-            # Remove "Fare" column to simplify as requested
+            # Property Table Data
             row = {
                 "ID": r['ID'], "Dates": f"{r['In'].strftime('%m/%d')}",
                 rev_label: top_line,
-                "Cleaning": c, "Comm": cm, "Exp": e,
+                "PMC Comm": cm, "Expensed": e,
                 "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None,
                 "Net Revenue": nr
             }
+            # Only add cleaning to the row if it's a Draft account
+            if conf['type'] == "Draft":
+                row["Cleaning"] = c
+                
             rows.append(row)
+        
+        # Display table with specific column order
+        cols_to_show = ["ID", "Dates", rev_label, "Cleaning", "PMC Comm", "Expensed", "Invoice", "Net Revenue"] if conf['type'] == "Draft" else ["ID", "Dates", rev_label, "PMC Comm", "Expensed", "Invoice", "Net Revenue"]
         
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={
             rev_label: st.column_config.NumberColumn(format="$%.2f"),
             "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
-        })
+        }, column_order=cols_to_show)
 
 elif mode == "PMC REPORT":
     st.title("PMC Internal Control Report")
