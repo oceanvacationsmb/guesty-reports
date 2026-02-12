@@ -11,7 +11,7 @@ if 'owner_db' not in st.session_state:
         "SMITH": {"pct": 15.0, "type": "Payout"},
     }
 
-# Mimic data with multiple properties
+# Mimic data with multiple properties and addresses
 def get_mimic_data(owner):
     if owner == "ERAN":
         return [
@@ -31,8 +31,8 @@ with st.sidebar:
     conf = st.session_state.owner_db[active_owner]
     
     st.divider()
-    st.header("📅 Period Selection")
-    report_type = st.selectbox("Select Context", ["By Month", "Full Year", "YTD"])
+    st.header("📅 Select Period")
+    report_type = st.selectbox("Context", ["By Month", "Full Year", "YTD"])
     
     today = date.today()
     if report_type == "By Month":
@@ -46,36 +46,39 @@ with st.sidebar:
         start_date = date(sel_year, 1, 1)
 
     st.divider()
-    with st.expander("👤 Owner Settings"):
-        target = st.selectbox("Action", ["+ Add New"] + list(st.session_state.owner_db.keys()))
+    st.header("⚙️ Settings")
+    with st.expander("👤 Owner Management"):
+        target = st.selectbox("Edit/Delete", ["+ Add New"] + list(st.session_state.owner_db.keys()))
         curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "Draft"})
-        n_name = st.text_input("Name", value="" if target == "+ Add New" else target).upper().strip()
-        n_pct = st.number_input("Comm %", 0.0, 100.0, float(curr["pct"]))
+        n_name = st.text_input("Owner Name", value="" if target == "+ Add New" else target).upper().strip()
+        n_pct = st.number_input("Commission %", 0.0, 100.0, float(curr["pct"]))
         n_style = st.selectbox("Style", ["Draft", "Payout"], index=0 if curr["type"] == "Draft" else 1)
         
         b1, b2 = st.columns(2)
-        if b1.button("💾 Save"):
+        if b1.button("💾 Save Settings"):
             st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_style}
             if target != "+ Add New" and target != n_name: del st.session_state.owner_db[target]
             st.rerun()
-        if target != "+ Add New" and b2.button("🗑️ Delete", type="primary"):
+        if target != "+ Add New" and b2.button("🗑️ Delete Owner", type="primary"):
             del st.session_state.owner_db[target]; st.rerun()
 
-    with st.expander("🔌 API"):
+    with st.expander("🔌 API", expanded=True):
         st.text_input("Client ID", value="0oaszuo22iOg...")
-        if st.button("🔄 Save & Run", type="primary"):
+        st.text_input("Client Secret", type="password")
+        # Matches your screenshot's red button style
+        if st.button("🔄 Save & Run", type="primary", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
-# --- 3. LOGIC ---
+# --- 3. CALCULATIONS ---
 data = get_mimic_data(active_owner)
 df_all = pd.DataFrame(data)
 
-# Calculate Grand Totals
 grand = {"gross": 0, "comm": 0, "exp": 0, "cln": 0, "net": 0}
 for _, r in df_all.iterrows():
     f, c, e = r['Fare'], r['Cln'], r['Exp']
     cm = round(f * (conf['pct'] / 100), 2)
+    # Global Logic
     rev = f + c if conf['type'] == "Draft" else f
     net = f - (c if conf['type'] == "Draft" else 0) - cm - e
     grand["gross"]+=rev; grand["comm"]+=cm; grand["cln"]+=c; grand["exp"]+=e; grand["net"]+=net
@@ -84,7 +87,7 @@ for _, r in df_all.iterrows():
 if mode == "Dashboard":
     st.markdown(f"<div style='text-align: center;'><h1 style='margin-bottom:0;'>Master Statement</h1><h2 style='color:#FFD700;'>{active_owner}</h2></div>", unsafe_allow_html=True)
 
-    # GRAND SUMMARY
+    # GRAND TOTAL SUMMARY
     st.subheader("📊 Grand Total Summary")
     cols = st.columns(5 if conf['type'] == "Draft" else 4)
     cols[0].metric("Total Gross", f"${grand['gross']:,.2f}")
@@ -92,31 +95,48 @@ if mode == "Dashboard":
     if conf['type'] == "Draft":
         cols[2].metric("Total Cleaning", f"${grand['cln']:,.2f}")
         cols[3].metric("Total Expenses", f"${grand['exp']:,.2f}")
+        # Draft Amount = Comm + Cleaning + Expenses
         cols[4].metric("DRAFT TOTAL", f"${(grand['comm'] + grand['cln'] + grand['exp']):,.2f}")
     else:
         cols[2].metric("Total Expenses", f"${grand['exp']:,.2f}")
-        cols[3].metric("NET PAYOUT", f"${grand['net']:,.2f}")
+        cols[3].metric("NET PAYOUT TOTAL", f"${grand['net']:,.2f}")
 
     st.divider()
 
-    # PROPERTY TABLES
+    # PROPERTY-SPECIFIC TABLES
     for addr in df_all["Addr"].unique():
         p_df = df_all[df_all["Addr"] == addr]
         st.markdown(f"#### 🏠 {p_df['Prop'].iloc[0]}")
         st.caption(f"📍 {addr}")
         
-        rows = []
+        p_rows = []
         for _, r in p_df.iterrows():
             f, c, e = r['Fare'], r['Cln'], r['Exp']
             cm = round(f * (conf['pct'] / 100), 2)
-            net = f - (c if conf['type'] == "Draft" else 0) - cm - e
-            rows.append({
-                "ID": r['ID'], "Dates": f"{r['In'].strftime('%m/%d')}", "Fare": f, "Comm": cm, "Exp": e, 
-                "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, "Net": round(net, 2)
+            p_net = f - (c if conf['type'] == "Draft" else 0) - cm - e
+            
+            p_rows.append({
+                "ID": r['ID'], 
+                "Dates": f"{r['In'].strftime('%m/%d')}", 
+                "Fare": f, 
+                "Comm": cm, 
+                "Exp": e, 
+                "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, 
+                "Net Payout": round(p_net, 2)
             })
         
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, 
-                     column_config={"Net": st.column_config.NumberColumn(format="$%.2f"), "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")})
+        # Format and display table
+        t_cfg = {
+            "Net Payout": st.column_config.NumberColumn(format="$%.2f"),
+            "Fare": st.column_config.NumberColumn(format="$%.2f"),
+            "Comm": st.column_config.NumberColumn(format="$%.2f"),
+            "Exp": st.column_config.NumberColumn(format="$%.2f"),
+            "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
+        }
+        st.dataframe(pd.DataFrame(p_rows), use_container_width=True, hide_index=True, column_config=t_cfg)
+        st.divider()
+
 else:
-    st.title("⚖️ Taxes Report")
-    st.write("Detailed location-based reporting...")
+    st.title("⚖️ Taxes & Jurisdictions")
+    st.info("Breakdown of income by local tax zones.")
+    # Tax breakdown table goes here
