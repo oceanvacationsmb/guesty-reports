@@ -88,6 +88,7 @@ df = pd.DataFrame(rows)
 # --- 5. RENDER ---
 st.header(f"Settlement Report: {active_owner} ({owner_pct}%)")
 
+# Summary Metrics with Comma Formatting
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Gross Revenue", f"${t_fare:,.2f}")
 c2.metric(f"Commission ({owner_pct}%)", f"${t_comm:,.2f}")
@@ -103,12 +104,13 @@ if conf['type'] == "Draft":
 else:
     final_order = ["ID", "Date", "Accommodation", "Commission", "Expenses", "Invoice"]
 
+# Table Config with Thousands Separator (format="$%,.2f")
 column_config = {
-    "Net Payout": st.column_config.NumberColumn("Net Payout", format="$%.2f", width="small"),
-    "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%.2f", width="small"),
-    "Cleaning": st.column_config.NumberColumn("Cleaning", format="$%.2f", width="small"),
-    "Commission": st.column_config.NumberColumn("Commission", format="$%.2f", width="small"),
-    "Expenses": st.column_config.NumberColumn("Expenses", format="$%.2f", width="small"),
+    "Net Payout": st.column_config.NumberColumn("Net Payout", format="$%,.2f", width="small"),
+    "Accommodation": st.column_config.NumberColumn("Accommodation", format="$%,.2f", width="small"),
+    "Cleaning": st.column_config.NumberColumn("Cleaning", format="$%,.2f", width="small"),
+    "Commission": st.column_config.NumberColumn("Commission", format="$%,.2f", width="small"),
+    "Expenses": st.column_config.NumberColumn("Expenses", format="$%,.2f", width="small"),
     "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View", width="small")
 }
 
