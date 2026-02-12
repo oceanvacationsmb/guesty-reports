@@ -3,11 +3,10 @@ import pandas as pd
 from datetime import datetime
 
 # --- 1. DATABASE INITIALIZATION ---
-# Names are now stored clean without (DRAFT) or (PAYOUT)
 if 'owner_db' not in st.session_state:
     st.session_state.owner_db = {
-        "ERAN": {"pct": 20.0, "type": "Draft", "web_fee": 1.0},
-        "SMITH": {"pct": 15.0, "type": "Payout", "web_fee": 0.0},
+        "ERAN": {"pct": 20.0, "type": "Draft"},
+        "SMITH": {"pct": 15.0, "type": "Payout"},
     }
 
 # --- 2. TEST DATA ---
@@ -24,6 +23,7 @@ st.title("🛡️ Guesty Automated Settlement Dashboard")
 
 with st.sidebar:
     st.header("📊 View Report")
+    # Clean owner selection - No "Draft" wording here
     active_owner = st.selectbox("Switch Active Owner", sorted(st.session_state.owner_db.keys()))
     
     st.divider()
@@ -32,27 +32,22 @@ with st.sidebar:
     y = st.number_input("Year", value=2026)
 
     st.divider()
-    # --- RESTORED OWNER SETTINGS ---
-    st.header("⚙️ Owner Settings")
+    st.header("⚙️ Settings")
     with st.expander("Manage Owners"):
         edit_list = list(st.session_state.owner_db.keys())
         target_owner = st.selectbox("Select Owner to Edit", ["+ Add New"] + edit_list)
         
-        if target_owner == "+ Add New":
-            new_name = st.text_input("New Owner Name").upper()
-            default_pct = 20.0
-            default_type = "Draft"
-        else:
-            new_name = target_owner
-            default_pct = st.session_state.owner_db[target_owner]["pct"]
-            default_type = st.session_state.owner_db[target_owner]["type"]
-
-        upd_pct = st.number_input("Commission %", 0.0, 100.0, float(default_pct))
-        upd_type = st.selectbox("Settlement Style", ["Draft", "Payout"], index=0 if default_type == "Draft" else 1)
+        # Logic to clean name if user tries to type (DRAFT) manually
+        name_input = st.text_input("Owner Name", value="" if target_owner == "+ Add New" else target_owner).upper().replace("(DRAFT)", "").strip()
         
-        if st.button("💾 Save Owner"):
-            st.session_state.owner_db[new_name] = {"pct": upd_pct, "type": upd_type}
-            st.success(f"Settings saved for {new_name}")
+        current_pct = st.session_state.owner_db.get(target_owner, {"pct": 20.0})["pct"] if target_owner != "+ Add New" else 20.0
+        current_type = st.session_state.owner_db.get(target_owner, {"type": "Draft"})["type"] if target_owner != "+ Add New" else "Draft"
+
+        upd_pct = st.number_input("Commission %", 0.0, 100.0, float(current_pct))
+        upd_type = st.selectbox("Settlement Style", ["Draft", "Payout"], index=0 if current_type == "Draft" else 1)
+        
+        if st.button("💾 Save Settings"):
+            st.session_state.owner_db[name_input] = {"pct": upd_pct, "type": upd_type}
             st.rerun()
 
 # --- 4. CALCULATIONS ---
@@ -92,7 +87,7 @@ for res in raw_res:
 
 df = pd.DataFrame(rows)
 
-# --- 5. DISPLAY SUMMARY ---
+# --- 5. CLEAN SUMMARY DISPLAY ---
 st.header(f"Settlement Report: {active_owner} ({owner_pct}%)")
 
 c1, c2, c3, c4 = st.columns(4)
@@ -111,6 +106,7 @@ with c4:
 st.divider()
 
 # --- 6. TABLE ORDER & CONFIG ---
+# Order for Draft: Net payout -> Accommodation -> cleaning -> commission -> expense
 if conf['type'] == "Draft":
     final_order = ["Reservation ID", "Dates (In/Out)", "Net Payout", "Accommodation", "Cleaning", "Commission", "Expenses", "Invoice"]
 else:
