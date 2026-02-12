@@ -70,28 +70,29 @@ data = get_mimic_data(active_owner)
 df_all = pd.DataFrame(data)
 
 # Calculate Grand Totals
-grand = {"gross": 0, "comm": 0, "exp": 0, "cln": 0, "net": 0}
+grand = {"gross_payout": 0, "comm": 0, "exp": 0, "cln": 0, "net_rev": 0}
 for _, r in df_all.iterrows():
     f, c, e = r['Fare'], r['Cln'], r['Exp']
     cm = round(f * (conf['pct'] / 100), 2)
-    rev = f + c if conf['type'] == "Draft" else f
-    net = f - (c if conf['type'] == "Draft" else 0) - cm - e
-    grand["gross"]+=rev; grand["comm"]+=cm; grand["cln"]+=c; grand["exp"]+=e; grand["net"]+=net
+    # Terminology Adjustment
+    gp = f + c if conf['type'] == "Draft" else f
+    nr = f - (c if conf['type'] == "Draft" else 0) - cm - e
+    grand["gross_payout"]+=gp; grand["comm"]+=cm; grand["cln"]+=c; grand["exp"]+=e; grand["net_rev"]+=nr
 
 if mode == "Dashboard":
     st.markdown(f"<div style='text-align: center;'><h1 style='margin-bottom:0;'>Master Statement</h1><h2 style='color:#FFD700;'>{active_owner}</h2></div>", unsafe_allow_html=True)
 
     st.subheader("📊 Grand Total Summary")
     cols = st.columns(5 if conf['type'] == "Draft" else 4)
-    cols[0].metric("Total Gross Revenue", f"${grand['gross']:,.2f}")
+    cols[0].metric("Gross Payout", f"${grand['gross_payout']:,.2f}")
     cols[1].metric(f"Total Commission", f"${grand['comm']:,.2f}")
     if conf['type'] == "Draft":
         cols[2].metric("Total Cleaning", f"${grand['cln']:,.2f}")
         cols[3].metric("Total Expenses", f"${grand['exp']:,.2f}")
-        cols[4].metric("DRAFT TOTAL", f"${(grand['comm'] + grand['cln'] + grand['exp']):,.2f}")
+        cols[4].metric("NET REVENUE", f"${grand['net_rev']:,.2f}")
     else:
         cols[2].metric("Total Expenses", f"${grand['exp']:,.2f}")
-        cols[3].metric("NET PAYOUT TOTAL", f"${grand['net']:,.2f}")
+        cols[3].metric("NET REVENUE", f"${grand['net_rev']:,.2f}")
 
     st.divider()
 
@@ -104,35 +105,31 @@ if mode == "Dashboard":
         for _, r in p_df.iterrows():
             f, c, e = r['Fare'], r['Cln'], r['Exp']
             cm = round(f * (conf['pct'] / 100), 2)
-            # REVENUE DEFINITION BASED ON SETTINGS
-            p_rev = f + c if conf['type'] == "Draft" else f
-            p_net = f - (c if conf['type'] == "Draft" else 0) - cm - e
+            p_gp = f + c if conf['type'] == "Draft" else f
+            p_nr = f - (c if conf['type'] == "Draft" else 0) - cm - e
             
             p_rows.append({
                 "ID": r['ID'], 
                 "Dates": f"{r['In'].strftime('%m/%d')}", 
-                "Gross Revenue": p_rev,
+                "Gross Payout": p_gp,
                 "Fare": f, 
                 "Cleaning": c,
                 "Comm": cm, 
                 "Exp": e, 
                 "Invoice": f"https://app.guesty.com/reservations/{r['ID']}" if e > 0 else None, 
-                "Net Payout": round(p_net, 2)
+                "Net Revenue": round(p_nr, 2)
             })
         
-        # TABLE CONFIGURATION
         t_cfg = {
-            "Gross Revenue": st.column_config.NumberColumn(format="$%.2f"),
+            "Gross Payout": st.column_config.NumberColumn(format="$%.2f"),
             "Fare": st.column_config.NumberColumn(format="$%.2f"),
             "Cleaning": st.column_config.NumberColumn(format="$%.2f"),
             "Comm": st.column_config.NumberColumn(format="$%.2f"),
             "Exp": st.column_config.NumberColumn(format="$%.2f"),
-            "Net Payout": st.column_config.NumberColumn(format="$%.2f"),
+            "Net Revenue": st.column_config.NumberColumn(format="$%.2f"),
             "Invoice": st.column_config.LinkColumn("Invoice", display_text="🔗 View")
         }
         
-        # Column order: Ensure Gross is visible at the start
-        col_order = ["ID", "Dates", "Gross Revenue", "Fare", "Cleaning", "Comm", "Exp", "Invoice", "Net Payout"]
-        
+        col_order = ["ID", "Dates", "Gross Payout", "Fare", "Cleaning", "Comm", "Exp", "Invoice", "Net Revenue"]
         st.dataframe(pd.DataFrame(p_rows), use_container_width=True, hide_index=True, column_config=t_cfg, column_order=col_order)
         st.divider()
