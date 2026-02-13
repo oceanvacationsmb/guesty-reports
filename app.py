@@ -1,51 +1,191 @@
-# --- 3. CALCULATION ENGINE (WITH DATE FILTER) ---
+import streamlit as st
+import pandas as pd
+from datetime import date, timedelta
+
+st.set_page_config(page_title="PMC MASTER SUITE", layout="wide")
+
+# -----------------------------
+# SESSION INIT (MUST BE FIRST)
+# -----------------------------
+if "owner_db" not in st.session_state:
+    st.session_state.owner_db = {
+        "ERAN": {"pct": 12.0, "type": "DRAFT"},
+        "SMITH": {"pct": 15.0, "type": "PAYOUT"},
+    }
+
+# -----------------------------
+# MOCK DATA
+# -----------------------------
+def get_mimic_data(owner):
+    if owner == "ERAN":
+        return [
+            {"ID": "RES-101", "Prop": "SUNSET VILLA", "Addr": "742 EVERGREEN TERRACE",
+             "In": date(2026, 2, 1), "Out": date(2026, 2, 5),
+             "Fare": 1200.0, "Cln": 150.0, "Exp": 25.0},
+
+            {"ID": "RES-201", "Prop": "BEACH HOUSE", "Addr": "123 OCEAN DRIVE",
+             "In": date(2026, 2, 5), "Out": date(2026, 2, 8),
+             "Fare": 2500.0, "Cln": 200.0, "Exp": 150.0}
+        ]
+
+    return [
+        {"ID": "RES-301", "Prop": "MOUNTAIN LODGE", "Addr": "55 PEAK ROAD",
+         "In": date(2026, 2, 1), "Out": date(2026, 2, 5),
+         "Fare": 1500.0, "Cln": 100.0, "Exp": 10.0}
+    ]
+
+# -----------------------------
+# SIDEBAR
+# -----------------------------
+with st.sidebar:
+    st.header("NAVIGATION")
+    mode = st.radio("SELECT REPORT TYPE", ["STATEMENTS", "PMC REPORT"], index=0)
+
+    st.divider()
+
+    active_owner = st.selectbox("ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
+    conf = st.session_state.owner_db[active_owner]
+
+    st.divider()
+
+    st.header("SELECT PERIOD")
+    report_type = st.selectbox("CONTEXT", ["BY MONTH", "BETWEEN DATES"], index=0)
+
+    today = date.today()
+
+    if report_type == "BY MONTH":
+        c1, c2 = st.columns(2)
+        months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+        sel_month = c1.selectbox("MONTH", months, index=today.month - 1)
+        sel_year = c2.selectbox("YEAR", [2026, 2025], index=0)
+
+        start_date = date(sel_year, months.index(sel_month) + 1, 1)
+        end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    else:
+        c1, c2 = st.columns(2)
+        start_date = c1.date_input("START DATE", today - timedelta(days=30))
+        end_date = c2.date_input("END DATE", today)
+
+    st.divider()
+
+    with st.expander("OWNER MANAGEMENT"):
+        target = st.selectbox("EDIT/ADD", ["+ ADD NEW"] + list(st.session_state.owner_db.keys()))
+        curr = st.session_state.owner_db.get(target, {"pct": 12.0, "type": "DRAFT"})
+
+        n_name = st.text_input("NAME", value="" if target == "+ ADD NEW" else target).upper().strip()
+        n_pct = st.number_input("COMM %", 0.0, 100.0, float(curr["pct"]))
+        n_type = st.selectbox("TYPE", ["DRAFT", "PAYOUT"],
+                              index=0 if curr["type"] == "DRAFT" else 1)
+
+        if st.button("SAVE"):
+            if n_name:
+                st.session_state.owner_db[n_name] = {"pct": n_pct, "type": n_type}
+                st.rerun()
+
+# -----------------------------
+# CALCULATION ENGINE
+# -----------------------------
 all_owners_data = []
 total_ov2 = 0
 
 for name, settings in st.session_state.owner_db.items():
     owner_data = get_mimic_data(name)
 
-    # ✅ FILTER BY SELECTED DATE RANGE
+    # DATE FILTER
     owner_data = [
         r for r in owner_data
         if r["In"] <= end_date and r["Out"] >= start_date
     ]
 
-    o_comm, o_cln, o_exp, o_fare = 0, 0, 0, 0
+    o_comm = o_cln = o_exp = o_fare = 0
 
     for r in owner_data:
-        f, c, e = r['Fare'], r['Cln'], r['Exp']
-        comm = round(f * (settings['pct'] / 100), 2)
+        f, c, e = r["Fare"], r["Cln"], r["Exp"]
+        comm = round(f * (settings["pct"] / 100), 2)
 
         o_comm += comm
         o_cln += c
         o_exp += e
         o_fare += f
 
-    is_draft = settings['type'] == "DRAFT"
+    is_draft = settings["type"] == "DRAFT"
 
     if is_draft:
-        top_rev = o_fare + o_cln
-        net_rev = top_rev - o_cln - o_comm - o_exp
-        draft_amt = o_comm + o_cln + o_exp
-        ach_amt = 0
+        revenue = o_fare + o_cln
+        net = revenue - o_cln - o_comm - o_exp
+        draft = o_comm + o_cln + o_exp
+        ach = 0
     else:
-        top_rev = o_fare
-        net_rev = o_fare - o_comm - o_exp
-        draft_amt = 0
-        ach_amt = net_rev
+        revenue = o_fare
+        net = o_fare - o_comm - o_exp
+        draft = 0
+        ach = net
 
     all_owners_data.append({
         "OWNER": name,
-        "TYPE": settings['type'],
-        "REVENUE": top_rev,
-        "PCT": settings['pct'],
+        "TYPE": settings["type"],
+        "REVENUE": revenue,
+        "PCT": settings["pct"],
         "COMM": o_comm,
-        "EXP": o_exp,
         "CLN": o_cln,
-        "NET": net_rev,
-        "DRAFT": draft_amt,
-        "ACH": ach_amt
+        "EXP": o_exp,
+        "NET": net,
+        "DRAFT": draft,
+        "ACH": ach
     })
 
     total_ov2 += o_comm
+
+# -----------------------------
+# MAIN VIEW
+# -----------------------------
+if mode == "STATEMENTS":
+
+    st.markdown(f"""
+    <div style='text-align:center;'>
+        <h1>OWNER STATEMENT</h1>
+        <h2 style='color:#FFD700;'>{active_owner}</h2>
+        <p>{start_date} TO {end_date}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    s = next(item for item in all_owners_data if item["OWNER"] == active_owner)
+
+    if conf["type"] == "DRAFT":
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("GROSS PAYOUT", f"${s['REVENUE']:,.2f}")
+        m2.metric("TOTAL CLEANING", f"${s['CLN']:,.2f}")
+        m3.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
+        m4.metric("EXPENSES", f"${s['EXP']:,.2f}")
+        m5.metric("NET REVENUE", f"${s['NET']:,.2f}")
+        m6.metric("DRAFT FROM OWNER", f"${s['DRAFT']:,.2f}")
+    else:
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("ACCOMMODATION", f"${s['REVENUE']:,.2f}")
+        m2.metric(f"PMC COMM ({s['PCT']}%)", f"${s['COMM']:,.2f}")
+        m3.metric("EXPENSES", f"${s['EXP']:,.2f}")
+        m4.metric("NET REVENUE", f"${s['NET']:,.2f}")
+        m5.metric("ACH TO OWNER", f"${s['ACH']:,.2f}")
+
+    st.divider()
+
+    df_p = pd.DataFrame([
+        r for r in get_mimic_data(active_owner)
+        if r["In"] <= end_date and r["Out"] >= start_date
+    ])
+
+    if not df_p.empty:
+        st.dataframe(df_p, use_container_width=True, hide_index=True)
+    else:
+        st.info("No reservations in selected period.")
+
+elif mode == "PMC REPORT":
+
+    st.title("PMC INTERNAL REPORT")
+    st.metric("TOTAL PMC COMMISSION", f"${total_ov2:,.2f}")
+    st.dataframe(pd.DataFrame(all_owners_data),
+                 use_container_width=True,
+                 hide_index=True)
