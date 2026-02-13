@@ -22,7 +22,7 @@ def get_mimic_data(owner):
 # --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("📂 NAVIGATION")
-    mode = st.radio("SELECT REPORT TYPE", ["STATEMENTS", "TAX REPORT", "PMC REPORT", "WHATS UP ASHLEY?",], index=0)
+    mode = st.radio("SELECT REPORT TYPE", ["STATEMENTS", "TAX REPORT", "PMC REPORT", "SHABBAT SHALOM ASHLEY",], index=0)
     
     st.divider()
     active_owner = st.selectbox("SWITCH ACTIVE OWNER", sorted(st.session_state.owner_db.keys()))
