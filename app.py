@@ -900,42 +900,43 @@ function displayStatement(){
         html+="<tr><td>"+row["CONFIRMATION CODE"].substring(0,8)+"</td><td>"+checkin+"-"+checkout+"</td><td>"+row["PLATFORM"]+"</td><td>"+money(a)+"</td><td>"+money(pm)+"</td><td>"+money(c)+"</td><td>"+money(w)+"</td><td>"+money(pm+c+w)+"</td></tr>";
       });
     }else{
-      // PAYOUT: use Net Accommodation = TOTAL PAYOUT - cleaning - markup - taxes - community fee - linen fee
-      html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>ACCOMMODATION</th><th>PMC</th><th>OWNER PAYOUT</th></tr>";
-      p.reservations.forEach(row=>{
-        const g=num(row["TOTAL PAYOUT"]);
+     // PAYOUT: use Net Accommodation = TOTAL PAYOUT + length-of-stay-discount - cleaning - linen - community fee - taxes
+html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>ACCOMMODATION</th><th>PMC</th><th>OWNER PAYOUT</th></tr>";
+p.reservations.forEach(row=>{
+  const totalPayout = num(row["TOTAL PAYOUT"]);
 
-        const cleaning=(row["STATUS"]||"").toLowerCase().includes("cancelled")?0:num(row["CLEANING FARE"]);
-        const markup=num(row["MARKUP"]);
-        const commFee=num(row["COMMUNITY FEE"])||0;
+  const cleaning = (row["STATUS"]||"").toLowerCase().includes("cancelled") ? 0 : num(row["CLEANING FARE"]);
+  const commFee = num(row["COMMUNITY FEE"]) || 0;
 
-        const cityTax=num(row["CITY TAX"])||0;
-        const stateTax=num(row["STATE TAX"])||0;
-        const countyTax=num(row["COUNTY TAX"])||0;
-        const occupancyTax=num(row["OCCUPANCY TAX"])||0;
-        const taxes=cityTax+stateTax+countyTax+occupancyTax;
+  const cityTax = num(row["CITY TAX"]) || 0;
+  const stateTax = num(row["STATE TAX"]) || 0;
+  const countyTax = num(row["COUNTY TAX"]) || 0;
+  const occupancyTax = num(row["OCCUPANCY TAX"]) || 0;
+  const taxes = cityTax + stateTax + countyTax + occupancyTax;
 
-        const linen=linenFee(row);
+  // Your CSV: LENGTH OF STAY DISCOUNT is often blank or negative (e.g. -546)
+  // We ADD it exactly as a signed value.
+  const stayDiscount = num(row["LENGTH OF STAY DISCOUNT"]);
 
-        // net accommodation (what you requested)
-        const netAcc = g - cleaning - markup - taxes - commFee - linen;
+  // Linen fee: only if a column exists (your pasted CSV does NOT include one)
+  const linen =
+    num(row["LINEN FEE"]) ||
+    num(row["LINENS FEE"]) ||
+    num(row["LINEN"]) ||
+    num(row["LINENS"]) ||
+    0;
 
-        const pm = netAcc * t.percent;
+  const netAcc = totalPayout + stayDiscount - cleaning - linen - commFee - taxes;
 
-        const checkin=row["CHECK-IN DATE"]?row["CHECK-IN DATE"].split("-").slice(1).join("/"):"";
-        const checkout=row["CHECK-OUT DATE"]?row["CHECK-OUT DATE"].split("-").slice(1).join("/"):"";
-        if(g===0)return;
+  const pm = netAcc * t.percent;
 
-        html+="<tr><td>"+(row[\"CONFIRMATION CODE\"]||\"\").substring(0,8)+"</td><td>"+checkin+"-"+checkout+"</td><td>"+(row[\"PLATFORM\"]||\"\")+"</td><td>"+money(netAcc)+"</td><td>"+money(pm)+"</td><td>"+money(netAcc-pm)+"</td></tr>";
-      });
-    }
-    html+="</table></div>";
-    if(exp.length>0){
-      html+="<div style='margin-top:15px'><div class='section-title'>EXPENSES</div><table style='margin-top:10px'>";
-      html+="<tr><th>TYPE</th><th>VENDOR</th><th>AMOUNT</th><th>ACTION</th></tr>";
-      exp.forEach(e=>{
-        html+="<tr><td>"+e.type+"</td><td>"+e.vendor+"</td><td>"+money(e.amount)+"</td><td><button class='btn btn-danger btn-small' onclick='deleteExpenseLocal("+e.id+")'>DELETE</button></td></tr>";
-      });
+  const checkin=row["CHECK-IN DATE"]?row["CHECK-IN DATE"].split("-").slice(1).join("/"):"";
+  const checkout=row["CHECK-OUT DATE"]?row["CHECK-OUT DATE"].split("-").slice(1).join("/"):"";
+
+  if(totalPayout===0)return;
+
+  html+="<tr><td>"+(row["CONFIRMATION CODE"]||"").substring(0,8)+"</td><td>"+checkin+"-"+checkout+"</td><td>"+(row["PLATFORM"]||"")+"</td><td>"+money(netAcc)+"</td><td>"+money(pm)+"</td><td>"+money(netAcc-pm)+"</td></tr>";
+});
       html+="</table></div>";
     }
     html+="</div>";
