@@ -888,9 +888,7 @@ const commFee=num(row["COMMUNITY FEE"])||0;
 a=a-commFee;
 
 const g=num(row["TOTAL PAYOUT"]);
-
 const c=(row["STATUS"]||"").toLowerCase().includes("cancelled")?0:num(row["CLEANING FARE"]);
-
 const pm=a*t.percent;
 
 const w=a>0&&!row["CONFIRMATION CODE"].toUpperCase().startsWith("HA")&&(row["PLATFORM"]||"").toLowerCase().includes("website")?g*0.01:0;
@@ -924,13 +922,12 @@ platformFee=totalPayout*0.05;
 }
 
 const pm=accom*t.percent;
-
 const ownerPayout=accom-pm-platformFee;
 
 const checkin=row["CHECK-IN DATE"]?row["CHECK-IN DATE"].split("-").slice(1).join("/"):"";
 const checkout=row["CHECK-OUT DATE"]?row["CHECK-OUT DATE"].split("-").slice(1).join("/"):"";
 
-if(accom===0)return;
+if(totalPayout===0)return;
 
 html+="<tr><td>"+(row["CONFIRMATION CODE"]||"").substring(0,8).toUpperCase()+"</td><td>"+checkin+"-"+checkout+"</td><td>"+platform+"</td><td>"+money(totalPayout)+"</td><td>"+money(accom)+"</td><td>"+money(platformFee)+"</td><td>"+money(pm)+"</td><td>"+money(ownerPayout)+"</td></tr>";
 
