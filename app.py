@@ -901,8 +901,7 @@ p.reservations.forEach(row=>{
   const totalPayout = num(row["TOTAL PAYOUT"]);
 
   const cleaning = (row["STATUS"]||"").toLowerCase().includes("cancelled") ? 0 : num(row["CLEANING FARE"]);
-  const commFee = num(row["COMMUNITY FEE"]) || 0;
-
+  
   const cityTax = num(row["CITY TAX"]) || 0;
   const stateTax = num(row["STATE TAX"]) || 0;
   const countyTax = num(row["COUNTY TAX"]) || 0;
