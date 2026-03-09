@@ -259,8 +259,7 @@ function runIncomeReport(){
       p.reservations.forEach(r=>{
 
         let a = num(r["ACCOMMODATION FARE"]) - num(r["MARKUP"])+ num(r["LENGTH OF STAY DISCOUNT"]);
-        const commFee = num(r["COMMUNITY FEE"])||0;
-        a = a - commFee;
+        
 
         html += "<tr>";
         html += "<td>"+prop+"</td>";
@@ -790,8 +789,6 @@ function processData(){
     byProp[prop].forEach(row=>{
       const g=num(row["TOTAL PAYOUT"]);
       let a=num(row["ACCOMMODATION FARE"])-num(row["MARKUP"])+ num(row["LENGTH OF STAY DISCOUNT"]);
-      const commFee=num(row["COMMUNITY FEE"])||0;
-      a=a-commFee;
       const c=(row["STATUS"]||"").toLowerCase().includes("cancelled")?0:num(row["CLEANING FARE"]);
       const p=a*t.percent;
       let w=0;
@@ -888,8 +885,6 @@ function displayStatement(){
       html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>ACCOMMODATION</th><th>PMC</th><th>CLEANING</th><th>WEBSITE</th><th>AMOUNT DUE</th></tr>";
       p.reservations.forEach(row=>{
         let a=num(row["ACCOMMODATION FARE"])-num(row["MARKUP"])+ num(row["LENGTH OF STAY DISCOUNT"]);
-        const commFee=num(row["COMMUNITY FEE"])||0;
-        a=a-commFee;
         const g=num(row["TOTAL PAYOUT"]);
         const c=(row["STATUS"]||"").toLowerCase().includes("cancelled")?0:num(row["CLEANING FARE"]);
         const pm=a*t.percent;
