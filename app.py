@@ -876,57 +876,69 @@ function displayStatement(){
     }
     
     html+="<div style='margin-top:15px'><div class='section-title'>RESERVATIONS</div><table style='margin-top:10px'>";
-    if(type==="draft"){
-      html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>ACCOMMODATION</th><th>PMC</th><th>CLEANING</th><th>WEBSITE</th><th>AMOUNT DUE</th></tr>";
-      p.reservations.forEach(row=>{
-        let a=num(row["ACCOMMODATION FARE"])-num(row["MARKUP"])+ num(row["LENGTH OF STAY DISCOUNT"]);
-        const commFee=num(row["COMMUNITY FEE"])||0;
-        a=a-commFee;
-        const g=num(row["TOTAL PAYOUT"]);
-        const c=(row["STATUS"]||"").toLowerCase().includes("cancelled")?0:num(row["CLEANING FARE"]);
-        const pm=a*t.percent;
-        const w=a>0&&!row["CONFIRMATION CODE"].toUpperCase().startsWith("HA")&&(row["PLATFORM"]||"").toLowerCase().includes("website")?g*0.01:0;
-        const checkin=row["CHECK-IN DATE"]?row["CHECK-IN DATE"].split("-").slice(1).join("/"):"";
-        const checkout=row["CHECK-OUT DATE"]?row["CHECK-OUT DATE"].split("-").slice(1).join("/"):"";
-        if(g===0)return;
-        html+="<tr><td>"+row["CONFIRMATION CODE"].substring(0,8)+"</td><td>"+checkin+"-"+checkout+"</td><td>"+row["PLATFORM"]+"</td><td>"+money(a)+"</td><td>"+money(pm)+"</td><td>"+money(c)+"</td><td>"+money(w)+"</td><td>"+money(pm+c+w)+"</td></tr>";
-      });
-    }else{
-      // PAYOUT: Accommodation = ACCOMMODATION FARE - MARKUP + LENGTH OF STAY DISCOUNT
-      // Website fee = 1% of TOTAL PAYOUT (website platform ONLY - NOT manual)
-      // VRBO/HomeAway fee = 5% of TOTAL PAYOUT
-      html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>GROSS PAYOUT</th><th>ACCOMMODATION</th><th>WEBSITE/VRBO FEE</th><th>PMC</th><th>OWNER PAYOUT</th></tr>";
-      
-      p.reservations.forEach(row=>{
-        const totalPayout = num(row["TOTAL PAYOUT"]);
-        const platform = (row["PLATFORM"] || "").toLowerCase().trim();
-        
-        // Accommodation ONLY: FARE - MARKUP + DISCOUNT (NO community fee, NO taxes)
-        const accom = num(row["ACCOMMODATION FARE"]) - num(row["MARKUP"]) + num(row["LENGTH OF STAY DISCOUNT"]);
-        
-        // Platform fee: 1% for "website" ONLY, 5% for "homeaway" or "vrbo", 0% for all others
-        let platformFee = 0;
-        if(platform === "website") {
-          platformFee = totalPayout * 0.01;
-        } else if(platform === "homeaway" || platform === "vrbo") {
-          platformFee = totalPayout * 0.05;
-        }
-        
-        // PMC calculated on accommodation
-        const pm = accom * t.percent;
-        
-        // Owner payout: accommodation - PMC - platform fee
-        const ownerPayout = accom - pm - platformFee;
-        
-        const checkin = row["CHECK-IN DATE"] ? row["CHECK-IN DATE"].split("-").slice(1).join("/") : "";
-        const checkout = row["CHECK-OUT DATE"] ? row["CHECK-OUT DATE"].split("-").slice(1).join("/") : "";
-        
-        if(totalPayout === 0) return;
-        
-        html += "<tr><td>" + (row["CONFIRMATION CODE"] || "").substring(0,8) + "</td><td>" + checkin + "-" + checkout + "</td><td>" + platform + "</td><td>" + money(totalPayout) + "</td><td>" + money(accom) + "</td><td>" + money(platformFee) + "</td><td>" + money(pm) + "</td><td>" + money(ownerPayout) + "</td></tr>";
-      });
-      html+="</table></div>";
-    }
+
+if(type==="draft"){
+
+html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>ACCOMMODATION</th><th>PMC</th><th>CLEANING</th><th>WEBSITE</th><th>AMOUNT DUE</th></tr>";
+
+p.reservations.forEach(row=>{
+
+let a=num(row["ACCOMMODATION FARE"])-num(row["MARKUP"])+num(row["LENGTH OF STAY DISCOUNT"]);
+const commFee=num(row["COMMUNITY FEE"])||0;
+a=a-commFee;
+
+const g=num(row["TOTAL PAYOUT"]);
+
+const c=(row["STATUS"]||"").toLowerCase().includes("cancelled")?0:num(row["CLEANING FARE"]);
+
+const pm=a*t.percent;
+
+const w=a>0&&!row["CONFIRMATION CODE"].toUpperCase().startsWith("HA")&&(row["PLATFORM"]||"").toLowerCase().includes("website")?g*0.01:0;
+
+const checkin=row["CHECK-IN DATE"]?row["CHECK-IN DATE"].split("-").slice(1).join("/"):"";
+const checkout=row["CHECK-OUT DATE"]?row["CHECK-OUT DATE"].split("-").slice(1).join("/"):"";
+
+if(g===0)return;
+
+html+="<tr><td>"+row["CONFIRMATION CODE"].substring(0,8).toUpperCase()+"</td><td>"+checkin+"-"+checkout+"</td><td>"+row["PLATFORM"]+"</td><td>"+money(a)+"</td><td>"+money(pm)+"</td><td>"+money(c)+"</td><td>"+money(w)+"</td><td>"+money(pm+c+w)+"</td></tr>";
+
+});
+
+}else{
+
+html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>GROSS PAYOUT</th><th>ACCOMMODATION</th><th>WEBSITE/VRBO FEE</th><th>PMC</th><th>OWNER PAYOUT</th></tr>";
+
+p.reservations.forEach(row=>{
+
+const totalPayout=num(row["TOTAL PAYOUT"]);
+const platform=(row["PLATFORM"]||"").toLowerCase().trim();
+
+const accom=num(row["ACCOMMODATION FARE"])-num(row["MARKUP"])+num(row["LENGTH OF STAY DISCOUNT"]);
+
+let platformFee=0;
+
+if(platform==="website"){
+platformFee=totalPayout*0.01;
+}else if(platform==="homeaway"||platform==="vrbo"){
+platformFee=totalPayout*0.05;
+}
+
+const pm=accom*t.percent;
+
+const ownerPayout=accom-pm-platformFee;
+
+const checkin=row["CHECK-IN DATE"]?row["CHECK-IN DATE"].split("-").slice(1).join("/"):"";
+const checkout=row["CHECK-OUT DATE"]?row["CHECK-OUT DATE"].split("-").slice(1).join("/"):"";
+
+if(totalPayout===0)return;
+
+html+="<tr><td>"+(row["CONFIRMATION CODE"]||"").substring(0,8).toUpperCase()+"</td><td>"+checkin+"-"+checkout+"</td><td>"+platform+"</td><td>"+money(totalPayout)+"</td><td>"+money(accom)+"</td><td>"+money(platformFee)+"</td><td>"+money(pm)+"</td><td>"+money(ownerPayout)+"</td></tr>";
+
+});
+
+}
+
+html+="</table></div>";
     if(exp.length>0){
       html+="<div style='margin-top:15px'><div class='section-title'>EXPENSES</div><table style='margin-top:10px'>";
       html+="<tr><th>TYPE</th><th>VENDOR</th><th>AMOUNT</th><th>ACTION</th></tr>";
