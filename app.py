@@ -790,8 +790,6 @@ function processData(){
     byProp[prop].forEach(row=>{
       const g=num(row["TOTAL PAYOUT"]);
       let a=num(row["ACCOMMODATION FARE"])-num(row["MARKUP"])+ num(row["LENGTH OF STAY DISCOUNT"]);
-      const commFee=num(row["COMMUNITY FEE"])||0;
-      a=a-commFee;
       const c=(row["STATUS"]||"").toLowerCase().includes("cancelled")?0:num(row["CLEANING FARE"]);
       const p=a*t.percent;
       let w=0;
