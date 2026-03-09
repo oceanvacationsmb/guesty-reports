@@ -904,7 +904,7 @@ html+="<tr><td>"+row["CONFIRMATION CODE"].substring(0,8).toUpperCase()+"</td><td
 
 }else{
 
-html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>GROSS PAYOUT</th><th>ACCOMMODATION</th><th>WEBSITE/VRBO FEE</th><th>PMC</th><th>OWNER PAYOUT</th></tr>";
+html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>ACCOMMODATION</th><th>PMC</th><th>EXPENSES</th><th>OWNER PAYOUT</th></tr>";
 
 p.reservations.forEach(row=>{
 
@@ -927,7 +927,7 @@ const ownerPayout=accom-pm-platformFee;
 const checkin=row["CHECK-IN DATE"]?row["CHECK-IN DATE"].split("-").slice(1).join("/"):"";
 const checkout=row["CHECK-OUT DATE"]?row["CHECK-OUT DATE"].split("-").slice(1).join("/"):"";
 
-html+="<tr><td>"+(row["CONFIRMATION CODE"]||"").substring(0,8).toUpperCase()+"</td><td>"+checkin+"-"+checkout+"</td><td>"+platform+"</td><td>"+money(totalPayout)+"</td><td>"+money(accom)+"</td><td>"+money(platformFee)+"</td><td>"+money(pm)+"</td><td>"+money(ownerPayout)+"</td></tr>";
+html+="<tr><td>"+(row["CONFIRMATION CODE"]||"").substring(0,8).toUpperCase()+"</td><td>"+checkin+"-"+checkout+"</td><td>"+platform+"</td><td>"+money(accom)+"</td><td>"+money(pm)+"</td><td>$0.00</td><td>"+money(ownerPayout)+"</td></tr>";
 
 });
 
