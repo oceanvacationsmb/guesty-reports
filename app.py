@@ -844,8 +844,7 @@ function displayStatement(){
     html+="<div class='summary-card' style='background:#000;color:#fff;border-color:#000'><div class='summary-label' style='color:#fff'>AMOUNT DUE</div><div class='summary-value' style='color:#fff'>"+money(masterTotals.draft)+"</div></div>";
   }else{
     html+="<div class='summary-card'><div class='summary-label'>ACCOMMODATION</div><div class='summary-value'>"+money(masterTotals.acc)+"</div></div>";
-    html+="<div class='summary-card'><div class='summary-label'>WEBSITE (1%)</div><div class='summary-value'>"+money(masterTotals.websiteFee)+"</div></div>";
-    html+="<div class='summary-card'><div class='summary-label'>VRBO (5%)</div><div class='summary-value'>"+money(masterTotals.vrboFee)+"</div></div>";
+    html+="<div class='summary-card'><div class='summary-label'>WEBSITE/VRBO FEE</div><div class='summary-value'>"+money(masterTotals.websiteFee + masterTotals.vrboFee)+"</div></div>";
     html+="<div class='summary-card'><div class='summary-label'>PMC</div><div class='summary-value'>"+money(masterTotals.pmc)+"</div></div>";
     html+="<div class='summary-card'><div class='summary-label'>EXPENSES</div><div class='summary-value'>"+money(masterTotals.expenses)+"</div></div>";
     html+="<div class='summary-card' style='background:#000;color:#fff;border-color:#000'><div class='summary-label' style='color:#fff'>OWNER PAYOUT</div><div class='summary-value' style='color:#fff'>"+money(masterTotals.owner)+"</div></div>";
@@ -869,8 +868,7 @@ function displayStatement(){
     }else{
       html+="<div class='summary-grid'>";
       html+="<div class='summary-card'><div class='summary-label'>ACCOMMODATION</div><div class='summary-value'>"+money(p.acc)+"</div></div>";
-      html+="<div class='summary-card'><div class='summary-label'>WEBSITE (1%)</div><div class='summary-value'>"+money(p.websiteFee)+"</div></div>";
-      html+="<div class='summary-card'><div class='summary-label'>VRBO (5%)</div><div class='summary-value'>"+money(p.vrboFee)+"</div></div>";
+      html+="<div class='summary-card'><div class='summary-label'>WEBSITE/VRBO FEE</div><div class='summary-value'>"+money(p.websiteFee + p.vrboFee)+"</div></div>";
       html+="<div class='summary-card'><div class='summary-label'>PMC</div><div class='summary-value'>"+money(p.pmc)+"</div></div>";
       html+="<div class='summary-card'><div class='summary-label'>EXPENSES</div><div class='summary-value'>"+money(p.expenses)+"</div></div>";
       html+="</div>";
@@ -894,10 +892,10 @@ function displayStatement(){
         html+="<tr><td>"+row["CONFIRMATION CODE"].substring(0,8)+"</td><td>"+checkin+"-"+checkout+"</td><td>"+row["PLATFORM"]+"</td><td>"+money(a)+"</td><td>"+money(pm)+"</td><td>"+money(c)+"</td><td>"+money(w)+"</td><td>"+money(pm+c+w)+"</td></tr>";
       });
     }else{
-      // PAYOUT: Accommodation = ACCOMMODATION FARE - MARKUP + LENGTH OF STAY DISCOUNT (nothing else)
-      // Website fee = 1% of TOTAL PAYOUT (website platform only)
-      // VRBO fee = 5% of TOTAL PAYOUT (vrbo platform only)
-      html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>ACCOMMODATION</th><th>WEBSITE/VRBO FEE</th><th>PMC</th><th>OWNER PAYOUT</th></tr>";
+      // PAYOUT: Accommodation = ACCOMMODATION FARE - MARKUP + LENGTH OF STAY DISCOUNT
+      // Website fee = 1% of TOTAL PAYOUT (website platform ONLY - NOT manual)
+      // VRBO/HomeAway fee = 5% of TOTAL PAYOUT
+      html+="<tr><th>CODE</th><th>STAY</th><th>PLATFORM</th><th>GROSS PAYOUT</th><th>ACCOMMODATION</th><th>WEBSITE/VRBO FEE</th><th>PMC</th><th>OWNER PAYOUT</th></tr>";
       
       p.reservations.forEach(row=>{
         const totalPayout = num(row["TOTAL PAYOUT"]);
@@ -906,11 +904,11 @@ function displayStatement(){
         // Accommodation ONLY: FARE - MARKUP + DISCOUNT (NO community fee, NO taxes)
         const accom = num(row["ACCOMMODATION FARE"]) - num(row["MARKUP"]) + num(row["LENGTH OF STAY DISCOUNT"]);
         
-        // Platform fee: 1% for "website", 5% for "vrbo", 0% for all others
+        // Platform fee: 1% for "website" ONLY, 5% for "homeaway" or "vrbo", 0% for all others
         let platformFee = 0;
         if(platform === "website") {
           platformFee = totalPayout * 0.01;
-        } else if(platform === "vrbo") {
+        } else if(platform === "homeaway" || platform === "vrbo") {
           platformFee = totalPayout * 0.05;
         }
         
@@ -925,7 +923,7 @@ function displayStatement(){
         
         if(totalPayout === 0) return;
         
-        html += "<tr><td>" + (row["CONFIRMATION CODE"] || "").substring(0,8) + "</td><td>" + checkin + "-" + checkout + "</td><td>" + platform + "</td><td>" + money(accom) + "</td><td>" + money(platformFee) + "</td><td>" + money(pm) + "</td><td>" + money(ownerPayout) + "</td></tr>";
+        html += "<tr><td>" + (row["CONFIRMATION CODE"] || "").substring(0,8) + "</td><td>" + checkin + "-" + checkout + "</td><td>" + platform + "</td><td>" + money(totalPayout) + "</td><td>" + money(accom) + "</td><td>" + money(platformFee) + "</td><td>" + money(pm) + "</td><td>" + money(ownerPayout) + "</td></tr>";
       });
       html+="</table></div>";
     }
@@ -974,4 +972,5 @@ function generateSummary(){
   if(type==="draft"){
     html+="<div style='margin:20px auto;padding:15px;border:2px solid #ffc107;background:#fff3cd;border-radius:5px;text-align:center'><div style='font-size:14px;font-weight:bold;color:#856404;margin-bottom:10px;text-transform:uppercase'>💰 DRAFT BREAKDOWN</div><div style='text-align:left;color:#333'>";
     html+="<div style='display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ddd'><span>ACCOMMODATION</span><span>"+money(masterTotals.acc)+"</span></div>";
-    html+="<div style='display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px
+    html+="<div style='display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ddd'><span>CLEANING FEE</span><span>"+money(masterTotals.clean)+"</span></div>";
+    html+="<div style='display:flex;justify
