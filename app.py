@@ -898,8 +898,16 @@ const checkout=row["CHECK-OUT DATE"]?row["CHECK-OUT DATE"].split("-").slice(1).j
 
 if(g===0)return;
 
-html+="<tr><td>"+row["CONFIRMATION CODE"].substring(0,8).toUpperCase()+"</td><td>"+checkin+"-"+checkout+"</td><td>"+row["PLATFORM"]+"</td><td>"+money(a)+"</td><td>"+money(pm)+"</td><td>"+money(c)+"</td><td>"+money(w)+"</td><td>"+money(pm+c+w)+"</td></tr>";
-
+html+="<tr>";
+html+="<td>"+row["CONFIRMATION CODE"].substring(0,8).toUpperCase()+"</td>";
+html+="<td>"+checkin+"-"+checkout+"</td>";
+html+="<td>"+row["PLATFORM"]+"</td>";
+html+="<td><input type='number' value='"+a+"' style='width:90px' onchange='row.accOverride=this.value'></td>";
+html+="<td>"+money(pm)+"</td>";
+html+="<td><input type='number' value='"+c+"' style='width:90px' onchange='row.cleanOverride=this.value'></td>";
+html+="<td>"+money(w)+"</td>";
+html+="<td>"+money(pm+c+w)+"</td>";
+html+="</tr>";
 });
 
 }else{
